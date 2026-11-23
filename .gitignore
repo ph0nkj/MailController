@@ -1,0 +1,31 @@
+# Environment and secrets
+.env
+.env.*
+!.env.example
+credentials.json
+token.json
+
+# Databases
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+data/
+
+# Build output
+bin/
+dist/
+coverage.out
+coverage.html
+*.test
+
+# Frontend tooling
+node_modules/
+web/node_modules/
+
+# Editors and OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
