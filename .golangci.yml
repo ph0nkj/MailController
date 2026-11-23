@@ -1,0 +1,45 @@
+run:
+  timeout: 5m
+  tests: true
+
+linters:
+  enable:
+    - bodyclose
+    - errcheck
+    - errorlint
+    - gocritic
+    - gosec
+    - govet
+    - ineffassign
+    - misspell
+    - nilerr
+    - revive
+    - staticcheck
+    - unconvert
+    - unparam
+    - unused
+
+  disable:
+    - copyloopvar
+    - exhaustive
+    - exhaustruct
+    - forbidigo
+    - funlen
+    - gochecknoglobals
+    - gochecknoinits
+    - lll
+    - mnd
+    - nestif
+    - varnamelen
+    - wrapcheck
+
+issues:
+  exclude-rules:
+    - path: _test\.go
+      linters:
+        - gosec
+        - unparam
+        - errcheck
+    - path: migrations/
+      linters:
+        - revive
