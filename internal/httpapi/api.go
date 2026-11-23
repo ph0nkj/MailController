@@ -70,9 +70,7 @@ func (a *API) Router() http.Handler {
 		})
 	})
 
-	r.NotFound(func(w http.ResponseWriter, _ *http.Request) {
-		writeError(w, http.StatusNotFound, "not_found", "resource not found")
-	})
+	r.NotFound(a.serveWeb)
 	r.MethodNotAllowed(func(w http.ResponseWriter, _ *http.Request) {
 		writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
 	})
