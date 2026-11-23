@@ -13,6 +13,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/ph0nkj/mailcontroller/internal/auth"
 	"github.com/ph0nkj/mailcontroller/internal/config"
 )
 
@@ -20,15 +21,30 @@ type contextKey string
 
 const requestIDKey contextKey = "request_id"
 
-// API wires HTTP handlers to application services.
-type API struct {
-	log *slog.Logger
-	cfg config.Config
+// AuthService is the authentication surface required by the HTTP layer.
+type AuthService interface {
+	Login(ctx context.Context, password, ip string) (auth.Session, error)
+	Session(token string) (auth.Session, bool)
+	Logout(token string)
+	Secure() bool
+	SessionTTL() time.Duration
 }
 
-// New returns an API with the supplied logger and configuration.
-func New(log *slog.Logger, cfg config.Config) *API {
-	return &API{log: log, cfg: cfg}
+// Deps contains external services used by HTTP handlers.
+type Deps struct {
+	Auth AuthService
+}
+
+// API wires HTTP handlers to application services.
+type API struct {
+	log  *slog.Logger
+	cfg  config.Config
+	auth AuthService
+}
+
+// New returns an API with the supplied logger, configuration and dependencies.
+func New(log *slog.Logger, cfg config.Config, deps Deps) *API {
+	return &API{log: log, cfg: cfg, auth: deps.Auth}
 }
 
 // Router builds the full HTTP handler, including middleware and API routes.
@@ -43,11 +59,18 @@ func (a *API) Router() http.Handler {
 
 	r.Route("/api/v1", func(r chi.Router) {
 		r.Get("/healthz", a.handleHealth)
+		r.Post("/auth/login", a.handleLogin)
+		r.Group(func(r chi.Router) {
+			r.Use(a.authenticate)
+			r.Get("/auth/me", a.handleMe)
+			r.With(a.requireCSRF).Post("/auth/logout", a.handleLogout)
+		})
+		r.NotFound(func(w http.ResponseWriter, _ *http.Request) {
+			writeError(w, http.StatusNotFound, "not_found", "resource not found")
+		})
 	})
 
-	r.NotFound(func(w http.ResponseWriter, _ *http.Request) {
-		writeError(w, http.StatusNotFound, "not_found", "resource not found")
-	})
+	r.NotFound(a.serveWeb)
 	r.MethodNotAllowed(func(w http.ResponseWriter, _ *http.Request) {
 		writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
 	})

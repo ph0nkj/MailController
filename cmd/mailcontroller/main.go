@@ -1,0 +1,86 @@
+// Command mailcontroller starts the MailController web service.
+package main
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"log/slog"
+	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
+
+	"github.com/ph0nkj/mailcontroller/internal/auth"
+	"github.com/ph0nkj/mailcontroller/internal/config"
+	"github.com/ph0nkj/mailcontroller/internal/httpapi"
+	"github.com/ph0nkj/mailcontroller/internal/store"
+)
+
+func main() {
+	if err := run(); err != nil {
+		slog.Error("mailcontroller stopped", "error", err)
+		os.Exit(1)
+	}
+}
+
+func run() error {
+	cfg, err := config.Load()
+	if err != nil {
+		return err
+	}
+
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: cfg.LogLevel}))
+	slog.SetDefault(logger)
+
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
+	st, err := store.Open(ctx, cfg.DBPath)
+	if err != nil {
+		return fmt.Errorf("open store: %w", err)
+	}
+	defer func() {
+		if closeErr := st.Close(); closeErr != nil {
+			logger.Error("close store", "error", closeErr)
+		}
+	}()
+
+	authService, err := auth.New(ctx, st.Settings(), cfg.AdminPassword, cfg.CookieSecure, logger)
+	if err != nil {
+		return fmt.Errorf("initialise auth: %w", err)
+	}
+
+	api := httpapi.New(logger, cfg, httpapi.Deps{Auth: authService})
+	server := &http.Server{
+		Addr:              cfg.Addr,
+		Handler:           api.Router(),
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       60 * time.Second,
+		WriteTimeout:      120 * time.Second,
+		IdleTimeout:       120 * time.Second,
+	}
+
+	serverErr := make(chan error, 1)
+	go func() {
+		logger.Info("mailcontroller listening", "addr", cfg.Addr, "base_url", cfg.BaseURL)
+		serverErr <- server.ListenAndServe()
+	}()
+
+	select {
+	case <-ctx.Done():
+		logger.Info("shutdown requested")
+	case err := <-serverErr:
+		if !errors.Is(err, http.ErrServerClosed) {
+			return fmt.Errorf("http server: %w", err)
+		}
+	}
+
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := server.Shutdown(shutdownCtx); err != nil {
+		return fmt.Errorf("shutdown server: %w", err)
+	}
+	return nil
+}
