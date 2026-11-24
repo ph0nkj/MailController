@@ -12,6 +12,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/ph0nkj/mailcontroller/internal/agent"
 	"github.com/ph0nkj/mailcontroller/internal/auth"
 	"github.com/ph0nkj/mailcontroller/internal/config"
 	mcrypto "github.com/ph0nkj/mailcontroller/internal/crypto"
@@ -93,6 +94,27 @@ func run() error {
 	}
 
 	runner := jobs.NewRunner(50, 30*time.Minute)
+	agentService, err := agent.NewService(
+		agent.NewLLMPlanner(llmService, cfg.AgentMaxSteps),
+		gmailService,
+		st.AgentRuns(),
+		runner,
+		st.Audit(),
+		logger,
+		agent.Options{
+			MaxMessages: cfg.AgentMaxMessages,
+			MaxSteps:    cfg.AgentMaxSteps,
+		},
+	)
+	if err != nil {
+		return fmt.Errorf("initialise agent service: %w", err)
+	}
+	if recovered, recoverErr := agentService.RecoverInterrupted(ctx); recoverErr != nil {
+		logger.Warn("recover agent runs", "error", recoverErr)
+	} else if recovered > 0 {
+		logger.Info("recovered interrupted agent runs", "count", recovered)
+	}
+
 	campaignEngine, err := mailer.NewEngine(
 		logger,
 		st.Campaigns(),
@@ -122,6 +144,7 @@ func run() error {
 		Campaigns:      st.Campaigns(),
 		CampaignRunner: campaignEngine,
 		LLM:            llmService,
+		Agent:          agentService,
 	})
 	server := &http.Server{
 		Addr:              cfg.Addr,
