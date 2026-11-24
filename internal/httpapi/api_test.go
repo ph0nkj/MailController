@@ -25,13 +25,19 @@ func newTestAPI(t *testing.T) (*API, http.Handler) {
 
 func newTestAPIWithGoogle(t *testing.T, google GoogleService) (*API, http.Handler) {
 	t.Helper()
+	return newTestAPIWithDeps(t, Deps{Google: google})
+}
+
+func newTestAPIWithDeps(t *testing.T, deps Deps) (*API, http.Handler) {
+	t.Helper()
 	st, err := store.Open(context.Background(), filepath.Join(t.TempDir(), "api.db"))
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, st.Close()) })
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	authService, err := auth.New(context.Background(), st.Settings(), "test-password", false, logger)
 	require.NoError(t, err)
-	api := New(logger, config.Config{}, Deps{Auth: authService, Google: google})
+	deps.Auth = authService
+	api := New(logger, config.Config{}, deps)
 	return api, api.Router()
 }
 
