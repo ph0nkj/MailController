@@ -24,6 +24,7 @@ type sentMessage struct {
 	subject string
 	text    string
 	html    string
+	headers map[string]string
 }
 
 type fakeSender struct {
@@ -31,11 +32,12 @@ type fakeSender struct {
 	attempts  int
 	sends     []sentMessage
 	retryable bool
+	from      string
 	fn        func(ctx context.Context, call int, message sentMessage) error
 }
 
-func (f *fakeSender) SendMessage(ctx context.Context, to, subject, textBody, htmlBody string) (string, error) {
-	message := sentMessage{to: to, subject: subject, text: textBody, html: htmlBody}
+func (f *fakeSender) SendMessage(ctx context.Context, to, subject, textBody, htmlBody string, headers map[string]string) (string, error) {
+	message := sentMessage{to: to, subject: subject, text: textBody, html: htmlBody, headers: cloneHeaders(headers)}
 	f.mu.Lock()
 	f.attempts++
 	call := f.attempts
@@ -54,6 +56,26 @@ func (f *fakeSender) Retryable(error) bool {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return f.retryable
+}
+
+func (f *fakeSender) FromAddress() string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.from == "" {
+		return "sender@example.com"
+	}
+	return f.from
+}
+
+func cloneHeaders(headers map[string]string) map[string]string {
+	if headers == nil {
+		return nil
+	}
+	clone := make(map[string]string, len(headers))
+	for name, value := range headers {
+		clone[name] = value
+	}
+	return clone
 }
 
 func (f *fakeSender) setFn(fn func(ctx context.Context, call int, message sentMessage) error) {
@@ -119,7 +141,7 @@ type engineFixture struct {
 	sleep  *sleepRecorder
 }
 
-func newEngineFixture(t *testing.T) *engineFixture {
+func newEngineFixture(t *testing.T, opts ...Option) *engineFixture {
 	t.Helper()
 	st, err := store.Open(context.Background(), filepath.Join(t.TempDir(), "engine.db"))
 	require.NoError(t, err)
@@ -131,7 +153,7 @@ func newEngineFixture(t *testing.T) *engineFixture {
 	audit := &fakeAudit{}
 	engine, err := NewEngine(logger, st.Campaigns(), func(context.Context) (Sender, error) {
 		return sender, nil
-	}, runner, audit)
+	}, runner, audit, opts...)
 	require.NoError(t, err)
 	sleep := &sleepRecorder{}
 	engine.sleep = sleep.sleep
@@ -225,6 +247,117 @@ func TestEngineSendsAllRecipients(t *testing.T) {
 	require.Equal(t, "campaign.finish", entries[0].Action)
 	require.Contains(t, entries[0].Details, `"sent":5`)
 	require.NotContains(t, entries[0].Details, "@")
+}
+
+func TestEngineAddsUnsubscribeHeaderAndFooter(t *testing.T) {
+	f := newEngineFixture(t, WithUnsubscribe("unsub@example.com"))
+	campaign := f.createCampaign(t, 100, 60, "a@example.com")
+
+	jobID, err := f.engine.Start(context.Background(), campaign.ID)
+	require.NoError(t, err)
+	job := waitForJob(t, f.runner, jobID)
+	require.Equal(t, jobs.StatusDone, job.Status, job.Error)
+
+	sends := f.sender.messages()
+	require.Len(t, sends, 1)
+	message := sends[0]
+	require.Contains(t, message.text, "Text for a@example.com")
+	require.Contains(t, message.text, "To unsubscribe")
+	require.Contains(t, message.text, "unsub@example.com")
+	require.Contains(t, message.html, "<p>HTML for a@example.com</p>")
+	require.Contains(t, message.html, `href="mailto:unsub@example.com?subject=unsubscribe"`)
+	require.Equal(t, map[string]string{
+		"List-Unsubscribe": "<mailto:unsub@example.com?subject=unsubscribe>",
+	}, message.headers)
+}
+
+func TestEngineUnsubscribeFallsBackToSenderAddress(t *testing.T) {
+	f := newEngineFixture(t, WithUnsubscribe(""))
+	f.sender.from = "owner@example.com"
+	campaign := f.createCampaign(t, 100, 60, "a@example.com")
+
+	jobID, err := f.engine.Start(context.Background(), campaign.ID)
+	require.NoError(t, err)
+	require.Equal(t, jobs.StatusDone, waitForJob(t, f.runner, jobID).Status)
+
+	message := f.sender.messages()[0]
+	require.Contains(t, message.text, "owner@example.com")
+	require.Equal(t, "<mailto:owner@example.com?subject=unsubscribe>", message.headers["List-Unsubscribe"])
+}
+
+func TestEngineUnsubscribeDisabledByDefault(t *testing.T) {
+	f := newEngineFixture(t)
+	campaign := f.createCampaign(t, 100, 60, "a@example.com")
+
+	jobID, err := f.engine.Start(context.Background(), campaign.ID)
+	require.NoError(t, err)
+	require.Equal(t, jobs.StatusDone, waitForJob(t, f.runner, jobID).Status)
+
+	message := f.sender.messages()[0]
+	require.NotContains(t, strings.ToLower(message.text), "unsubscribe")
+	require.NotContains(t, strings.ToLower(message.html), "unsubscribe")
+	require.Empty(t, message.headers)
+}
+
+func TestPrepareMessageHTMLEmptyTextFallback(t *testing.T) {
+	engine := &Engine{unsubscribeEnabled: true, unsubscribeEmail: "unsub@example.com"}
+	textBody, htmlBody, headers := engine.prepareMessage(&fakeSender{}, "", "<p>Hello</p>")
+	require.Contains(t, textBody, htmlOnlyTextBody)
+	require.Contains(t, textBody, "unsub@example.com")
+	require.Contains(t, htmlBody, "<p>Hello</p>")
+	require.NotEmpty(t, headers["List-Unsubscribe"])
+}
+
+func TestNewEngineRejectsInvalidUnsubscribeEmail(t *testing.T) {
+	st, err := store.Open(context.Background(), filepath.Join(t.TempDir(), "unsubscribe.db"))
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, st.Close()) })
+
+	_, err = NewEngine(nil, st.Campaigns(), func(context.Context) (Sender, error) {
+		return &fakeSender{}, nil
+	}, jobs.NewRunner(1, time.Minute), nil, WithUnsubscribe("Alice <alice@example.com>"))
+	require.Error(t, err)
+}
+
+func TestEngineGlobalDailyCap(t *testing.T) {
+	f := newEngineFixture(t, WithSendCaps(600, 1))
+	campaign := f.createCampaign(t, 100, 60, "a@example.com", "b@example.com")
+
+	jobID, err := f.engine.Start(context.Background(), campaign.ID)
+	require.NoError(t, err)
+	require.Equal(t, jobs.StatusDone, waitForJob(t, f.runner, jobID).Status)
+
+	requireCampaignStatus(t, f.repo, campaign.ID, domain.CampaignPaused)
+	stats, err := f.repo.Stats(context.Background(), campaign.ID)
+	require.NoError(t, err)
+	require.Equal(t, domain.RecipientStats{Total: 2, Pending: 1, Sent: 1}, stats)
+	require.Contains(t, f.audit.list()[0].Details, `"daily_limit":1`)
+}
+
+func TestEngineGlobalRateCap(t *testing.T) {
+	f := newEngineFixture(t, WithSendCaps(60, 100))
+	campaign := f.createCampaign(t, 100, 600, "a@example.com", "b@example.com")
+
+	jobID, err := f.engine.Start(context.Background(), campaign.ID)
+	require.NoError(t, err)
+	require.Equal(t, jobs.StatusDone, waitForJob(t, f.runner, jobID).Status)
+	require.Equal(t, []time.Duration{time.Second}, f.sleep.recorded())
+}
+
+func TestEffectiveLimits(t *testing.T) {
+	engine := &Engine{}
+	daily, rate := engine.effectiveLimits(domain.Campaign{DailyLimit: 10, RatePerMin: 20})
+	require.Equal(t, 10, daily)
+	require.Equal(t, 20, rate)
+
+	engine = &Engine{maxDailyLimit: 5, maxRatePerMin: 30}
+	daily, rate = engine.effectiveLimits(domain.Campaign{DailyLimit: 10, RatePerMin: 20})
+	require.Equal(t, 5, daily)
+	require.Equal(t, 20, rate)
+
+	daily, rate = engine.effectiveLimits(domain.Campaign{})
+	require.Equal(t, 5, daily)
+	require.Equal(t, 30, rate)
 }
 
 func TestEngineDailyLimitPauses(t *testing.T) {

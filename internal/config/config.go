@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/mail"
 	"net/url"
 	"os"
 	"strconv"
@@ -74,7 +75,7 @@ func Load() (Config, error) {
 		DBPath:             env("MC_DB_PATH", DefaultDBPath),
 		AdminPassword:      os.Getenv("MC_ADMIN_PASSWORD"),
 		BaseURL:            strings.TrimRight(env("MC_BASE_URL", DefaultBaseURL), "/"),
-		UnsubscribeEmail:   os.Getenv("MC_UNSUBSCRIBE_EMAIL"),
+		UnsubscribeEmail:   strings.TrimSpace(os.Getenv("MC_UNSUBSCRIBE_EMAIL")),
 		UnsubscribeEnabled: envBool("MC_UNSUBSCRIBE_ENABLED", true),
 		GoogleClientID:     strings.TrimSpace(os.Getenv("GOOGLE_CLIENT_ID")),
 		GoogleClientSecret: strings.TrimSpace(os.Getenv("GOOGLE_CLIENT_SECRET")),
@@ -151,6 +152,12 @@ func (c Config) Validate() error {
 	}
 	if c.LLMBodyChars < 100 || c.LLMBodyChars > 100000 {
 		return fmt.Errorf("config: MC_LLM_BODY_CHARS must be between 100 and 100000, got %d", c.LLMBodyChars)
+	}
+	if c.UnsubscribeEmail != "" {
+		parsed, err := mail.ParseAddress(c.UnsubscribeEmail)
+		if err != nil || parsed.Name != "" || !strings.EqualFold(parsed.Address, c.UnsubscribeEmail) {
+			return fmt.Errorf("config: MC_UNSUBSCRIBE_EMAIL must be a plain email address, got %q", c.UnsubscribeEmail)
+		}
 	}
 	return nil
 }

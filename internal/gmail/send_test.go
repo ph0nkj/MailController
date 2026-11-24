@@ -33,7 +33,7 @@ func TestSendMessage(t *testing.T) {
 	}))
 
 	id, err := client.SendMessage(context.Background(), "alice@example.com", "Hello",
-		"Plain body", "<p>HTML body</p>")
+		"Plain body", "<p>HTML body</p>", nil)
 	require.NoError(t, err)
 	require.Equal(t, "sent-1", id)
 
@@ -57,7 +57,7 @@ func TestSendMessage(t *testing.T) {
 
 func TestSendMessageTextOnlyAndUnicodeSubject(t *testing.T) {
 	raw, err := buildMIMEMessage("user@example.com", "bob@example.org", "Привет, мир",
-		"Plain only", "", time.Unix(0, 0))
+		"Plain only", "", nil, time.Unix(0, 0))
 	require.NoError(t, err)
 	message := string(raw)
 	require.Contains(t, message, "Content-Type: text/plain; charset=\"UTF-8\"")
@@ -71,7 +71,7 @@ func TestSendMessageTextOnlyAndUnicodeSubject(t *testing.T) {
 	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(t, w, map[string]string{"id": "sent-2"})
 	}))
-	id, err := client.SendMessage(context.Background(), "bob@example.org", "Hi", "Plain only", "")
+	id, err := client.SendMessage(context.Background(), "bob@example.org", "Hi", "Plain only", "", nil)
 	require.NoError(t, err)
 	require.Equal(t, "sent-2", id)
 }
@@ -97,15 +97,45 @@ func TestBuildMIMEMessageValidation(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := buildMIMEMessage(tt.from, tt.to, tt.subject, tt.text, tt.html, now)
+			_, err := buildMIMEMessage(tt.from, tt.to, tt.subject, tt.text, tt.html, nil, now)
 			require.ErrorIs(t, err, ErrInvalidMessage)
 		})
 	}
 
 	// Header injection in the subject is neutralised, not rejected.
-	raw, err := buildMIMEMessage("u@example.com", "a@example.com", "Hello\r\nBcc: evil@example.com", "body", "", now)
+	raw, err := buildMIMEMessage("u@example.com", "a@example.com", "Hello\r\nBcc: evil@example.com", "body", "", nil, now)
 	require.NoError(t, err)
 	require.NotContains(t, string(raw), "\r\nBcc: evil@example.com")
+}
+
+func TestBuildMIMEMessageExtraHeaders(t *testing.T) {
+	raw, err := buildMIMEMessage("u@example.com", "a@example.com", "Subject", "body", "",
+		map[string]string{"List-Unsubscribe": "<mailto:u@example.com?subject=unsubscribe>"},
+		time.Unix(0, 0))
+	require.NoError(t, err)
+	message := string(raw)
+	require.Contains(t, message, "List-Unsubscribe: <mailto:u@example.com?subject=unsubscribe>\r\n")
+	require.Less(t, strings.Index(message, "List-Unsubscribe:"), strings.Index(message, "MIME-Version:"))
+}
+
+func TestBuildMIMEMessageRejectsHeaderInjection(t *testing.T) {
+	now := time.Unix(0, 0)
+	_, err := buildMIMEMessage("u@example.com", "a@example.com", "Subject", "body", "",
+		map[string]string{"X-Test": "ok\r\nBcc: evil@example.com"}, now)
+	require.ErrorIs(t, err, ErrInvalidMessage)
+
+	_, err = buildMIMEMessage("u@example.com", "a@example.com", "Subject", "body", "",
+		map[string]string{"Bad Name": "value"}, now)
+	require.ErrorIs(t, err, ErrInvalidMessage)
+
+	_, err = buildMIMEMessage("u@example.com", "a@example.com", "Subject", "body", "",
+		map[string]string{"": "value"}, now)
+	require.ErrorIs(t, err, ErrInvalidMessage)
+}
+
+func TestFromAddress(t *testing.T) {
+	client := &Client{email: "user@example.com"}
+	require.Equal(t, "user@example.com", client.FromAddress())
 }
 
 func TestRetryable(t *testing.T) {
@@ -126,7 +156,7 @@ func TestRetryable(t *testing.T) {
 }
 
 func TestBuildMIMEMessageEmptyHTMLFallbackText(t *testing.T) {
-	raw, err := buildMIMEMessage("u@example.com", "a@example.com", "Subject", "", "<p>HTML</p>", time.Unix(0, 0))
+	raw, err := buildMIMEMessage("u@example.com", "a@example.com", "Subject", "", "<p>HTML</p>", nil, time.Unix(0, 0))
 	require.NoError(t, err)
 	message := string(raw)
 	boundary := mimeBoundary(t, message)
@@ -162,7 +192,7 @@ func TestSendMessageAPIError(t *testing.T) {
 		w.WriteHeader(http.StatusTooManyRequests)
 		_, _ = fmt.Fprint(w, `{"error":{"code":429,"message":"rate limited"}}`)
 	}))
-	_, err := client.SendMessage(context.Background(), "a@example.com", "Hi", "body", "")
+	_, err := client.SendMessage(context.Background(), "a@example.com", "Hi", "body", "", nil)
 	require.Error(t, err)
 	require.True(t, client.Retryable(err))
 }

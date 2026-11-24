@@ -17,6 +17,7 @@ import (
 	"github.com/ph0nkj/mailcontroller/internal/config"
 	mcrypto "github.com/ph0nkj/mailcontroller/internal/crypto"
 	"github.com/ph0nkj/mailcontroller/internal/gmail"
+	"github.com/ph0nkj/mailcontroller/internal/healthcheck"
 	"github.com/ph0nkj/mailcontroller/internal/httpapi"
 	"github.com/ph0nkj/mailcontroller/internal/jobs"
 	"github.com/ph0nkj/mailcontroller/internal/llm"
@@ -25,10 +26,27 @@ import (
 )
 
 func main() {
+	if len(os.Args) == 2 && os.Args[1] == "-healthcheck" {
+		if err := runHealthcheck(); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		return
+	}
 	if err := run(); err != nil {
 		slog.Error("mailcontroller stopped", "error", err)
 		os.Exit(1)
 	}
+}
+
+func runHealthcheck() error {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	addr := os.Getenv("MC_ADDR")
+	if addr == "" {
+		addr = config.DefaultAddr
+	}
+	return healthcheck.Run(ctx, addr)
 }
 
 func run() error {
@@ -115,6 +133,12 @@ func run() error {
 		logger.Info("recovered interrupted agent runs", "count", recovered)
 	}
 
+	campaignOptions := []mailer.Option{
+		mailer.WithSendCaps(cfg.SendRatePerMin, cfg.DailySendLimit),
+	}
+	if cfg.UnsubscribeEnabled {
+		campaignOptions = append(campaignOptions, mailer.WithUnsubscribe(cfg.UnsubscribeEmail))
+	}
 	campaignEngine, err := mailer.NewEngine(
 		logger,
 		st.Campaigns(),
@@ -127,6 +151,7 @@ func run() error {
 		},
 		runner,
 		st.Audit(),
+		campaignOptions...,
 	)
 	if err != nil {
 		return fmt.Errorf("initialise campaign engine: %w", err)

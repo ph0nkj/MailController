@@ -86,6 +86,7 @@ func TestLoadRejectsBadValues(t *testing.T) {
 		{name: "bad llm max", key: "MC_LLM_MAX_MESSAGES", value: "huge"},
 		{name: "bad agent max steps", key: "MC_AGENT_MAX_STEPS", value: "21"},
 		{name: "bad log level", key: "MC_LOG_LEVEL", value: "verbose"},
+		{name: "bad unsubscribe email", key: "MC_UNSUBSCRIBE_EMAIL", value: "not an email"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
