@@ -139,4 +139,13 @@ export const api = {
       method: "POST",
       body: { message_id: messageId, instructions },
     }),
+
+  agentPlan: (prompt) => request("/agent/plan", { method: "POST", body: { prompt } }),
+  agentRuns: (limit = 10) => request(`/agent/runs?limit=${encodeURIComponent(limit)}`),
+  agentRun: (id) => request(`/agent/runs/${encodeURIComponent(id)}`),
+  agentExecute: (id, confirmToken) =>
+    request(`/agent/runs/${encodeURIComponent(id)}/execute`, {
+      method: "POST",
+      body: { confirm_token: confirmToken },
+    }),
 };
