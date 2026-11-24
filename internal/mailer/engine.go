@@ -83,6 +83,8 @@ type Engine struct {
 
 	unsubscribeEnabled bool
 	unsubscribeEmail   string
+	maxRatePerMin      int
+	maxDailyLimit      int
 
 	mu     sync.Mutex
 	active map[string]*runHandle
@@ -97,6 +99,20 @@ func WithUnsubscribe(email string) Option {
 	return func(e *Engine) {
 		e.unsubscribeEnabled = true
 		e.unsubscribeEmail = strings.TrimSpace(email)
+	}
+}
+
+// WithSendCaps limits every campaign to at most ratePerMin messages per minute
+// and dailyLimit messages per rolling 24 hours. Non-positive values disable a
+// cap.
+func WithSendCaps(ratePerMin, dailyLimit int) Option {
+	return func(e *Engine) {
+		if ratePerMin > 0 {
+			e.maxRatePerMin = ratePerMin
+		}
+		if dailyLimit > 0 {
+			e.maxDailyLimit = dailyLimit
+		}
 	}
 }
 
@@ -282,7 +298,8 @@ func (e *Engine) run(ctx context.Context, campaignID string, sender Sender, prog
 		return e.failRun(campaignID, fmt.Errorf("load campaign stats: %w", err))
 	}
 
-	interval := sendInterval(campaign.RatePerMin)
+	dailyLimit, ratePerMin := e.effectiveLimits(campaign)
+	interval := sendInterval(ratePerMin)
 	processed := 0
 	runSent := 0
 	runFailed := 0
@@ -307,10 +324,10 @@ func (e *Engine) run(ctx context.Context, campaignID string, sender Sender, prog
 			if countErr != nil {
 				return e.failRun(campaignID, fmt.Errorf("count daily sends: %w", countErr))
 			}
-			if sentToday >= campaign.DailyLimit {
+			if sentToday >= dailyLimit {
 				e.pauseRun(campaignID, "daily_limit", map[string]any{
 					"sent_today":  sentToday,
-					"daily_limit": campaign.DailyLimit,
+					"daily_limit": dailyLimit,
 				})
 				return nil
 			}
@@ -508,6 +525,19 @@ func (e *Engine) auditEvent(ctx context.Context, entry domain.AuditEntry) {
 	if err := e.audit.Add(auditCtx, entry); err != nil {
 		e.log.Warn("write campaign audit entry", "action", entry.Action, "error", err)
 	}
+}
+
+// effectiveLimits combines campaign settings with the global caps.
+func (e *Engine) effectiveLimits(campaign domain.Campaign) (dailyLimit, ratePerMin int) {
+	dailyLimit = campaign.DailyLimit
+	if e.maxDailyLimit > 0 && (dailyLimit <= 0 || e.maxDailyLimit < dailyLimit) {
+		dailyLimit = e.maxDailyLimit
+	}
+	ratePerMin = campaign.RatePerMin
+	if e.maxRatePerMin > 0 && (ratePerMin <= 0 || e.maxRatePerMin < ratePerMin) {
+		ratePerMin = e.maxRatePerMin
+	}
+	return dailyLimit, ratePerMin
 }
 
 func sendInterval(ratePerMin int) time.Duration {

@@ -3,7 +3,7 @@ services:
     build:
       context: .
       args:
-        VERSION: ${MC_VERSION:-dev}
+        VERSION: ${MC_VERSION:-latest}
     image: mailcontroller:${MC_VERSION:-latest}
     container_name: mailcontroller
     restart: unless-stopped

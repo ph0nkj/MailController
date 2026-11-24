@@ -133,7 +133,9 @@ func run() error {
 		logger.Info("recovered interrupted agent runs", "count", recovered)
 	}
 
-	var campaignOptions []mailer.Option
+	campaignOptions := []mailer.Option{
+		mailer.WithSendCaps(cfg.SendRatePerMin, cfg.DailySendLimit),
+	}
 	if cfg.UnsubscribeEnabled {
 		campaignOptions = append(campaignOptions, mailer.WithUnsubscribe(cfg.UnsubscribeEmail))
 	}

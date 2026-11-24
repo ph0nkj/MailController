@@ -319,6 +319,47 @@ func TestNewEngineRejectsInvalidUnsubscribeEmail(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestEngineGlobalDailyCap(t *testing.T) {
+	f := newEngineFixture(t, WithSendCaps(600, 1))
+	campaign := f.createCampaign(t, 100, 60, "a@example.com", "b@example.com")
+
+	jobID, err := f.engine.Start(context.Background(), campaign.ID)
+	require.NoError(t, err)
+	require.Equal(t, jobs.StatusDone, waitForJob(t, f.runner, jobID).Status)
+
+	requireCampaignStatus(t, f.repo, campaign.ID, domain.CampaignPaused)
+	stats, err := f.repo.Stats(context.Background(), campaign.ID)
+	require.NoError(t, err)
+	require.Equal(t, domain.RecipientStats{Total: 2, Pending: 1, Sent: 1}, stats)
+	require.Contains(t, f.audit.list()[0].Details, `"daily_limit":1`)
+}
+
+func TestEngineGlobalRateCap(t *testing.T) {
+	f := newEngineFixture(t, WithSendCaps(60, 100))
+	campaign := f.createCampaign(t, 100, 600, "a@example.com", "b@example.com")
+
+	jobID, err := f.engine.Start(context.Background(), campaign.ID)
+	require.NoError(t, err)
+	require.Equal(t, jobs.StatusDone, waitForJob(t, f.runner, jobID).Status)
+	require.Equal(t, []time.Duration{time.Second}, f.sleep.recorded())
+}
+
+func TestEffectiveLimits(t *testing.T) {
+	engine := &Engine{}
+	daily, rate := engine.effectiveLimits(domain.Campaign{DailyLimit: 10, RatePerMin: 20})
+	require.Equal(t, 10, daily)
+	require.Equal(t, 20, rate)
+
+	engine = &Engine{maxDailyLimit: 5, maxRatePerMin: 30}
+	daily, rate = engine.effectiveLimits(domain.Campaign{DailyLimit: 10, RatePerMin: 20})
+	require.Equal(t, 5, daily)
+	require.Equal(t, 20, rate)
+
+	daily, rate = engine.effectiveLimits(domain.Campaign{})
+	require.Equal(t, 5, daily)
+	require.Equal(t, 30, rate)
+}
+
 func TestEngineDailyLimitPauses(t *testing.T) {
 	f := newEngineFixture(t)
 	campaign := f.createCampaign(t, 2, 60,
