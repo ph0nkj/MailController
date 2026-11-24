@@ -1,0 +1,31 @@
+services:
+  mailcontroller:
+    build:
+      context: .
+      args:
+        VERSION: ${MC_VERSION:-dev}
+    image: mailcontroller:${MC_VERSION:-latest}
+    container_name: mailcontroller
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - mailcontroller-data:/data
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "/mailcontroller", "-healthcheck"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  mailcontroller-data:
