@@ -40,6 +40,7 @@ type Deps struct {
 	Jobs           *jobs.Runner
 	Campaigns      CampaignStore
 	CampaignRunner CampaignRunner
+	LLM            LLMService
 }
 
 // API wires HTTP handlers to application services.
@@ -55,6 +56,7 @@ type API struct {
 	mailCache      *ttlCache[any]
 	campaigns      CampaignStore
 	campaignRunner CampaignRunner
+	llm            LLMService
 }
 
 // New returns an API with the supplied logger, configuration and dependencies.
@@ -75,6 +77,7 @@ func New(log *slog.Logger, cfg config.Config, deps Deps) *API {
 		mailCache:      newTTLCache[any](mailCacheTTL, mailCacheMaxEntries),
 		campaigns:      deps.Campaigns,
 		campaignRunner: deps.CampaignRunner,
+		llm:            deps.LLM,
 	}
 }
 
@@ -100,6 +103,7 @@ func (a *API) Router() http.Handler {
 			a.mailRoutes(r)
 			a.jobRoutes(r)
 			a.campaignRoutes(r)
+			a.llmRoutes(r)
 		})
 		r.NotFound(func(w http.ResponseWriter, _ *http.Request) {
 			writeError(w, http.StatusNotFound, "not_found", "resource not found")

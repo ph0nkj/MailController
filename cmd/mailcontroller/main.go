@@ -18,6 +18,7 @@ import (
 	"github.com/ph0nkj/mailcontroller/internal/gmail"
 	"github.com/ph0nkj/mailcontroller/internal/httpapi"
 	"github.com/ph0nkj/mailcontroller/internal/jobs"
+	"github.com/ph0nkj/mailcontroller/internal/llm"
 	"github.com/ph0nkj/mailcontroller/internal/mailer"
 	"github.com/ph0nkj/mailcontroller/internal/store"
 )
@@ -76,6 +77,21 @@ func run() error {
 		return fmt.Errorf("initialise gmail service: %w", err)
 	}
 
+	llmService, err := llm.NewService(
+		st.Settings(),
+		secretCipher,
+		gmailService,
+		st.Audit(),
+		logger,
+		llm.Options{
+			MaxMessages: cfg.LLMMaxMessages,
+			BodyChars:   cfg.LLMBodyChars,
+		},
+	)
+	if err != nil {
+		return fmt.Errorf("initialise llm service: %w", err)
+	}
+
 	runner := jobs.NewRunner(50, 30*time.Minute)
 	campaignEngine, err := mailer.NewEngine(
 		logger,
@@ -105,6 +121,7 @@ func run() error {
 		Jobs:           runner,
 		Campaigns:      st.Campaigns(),
 		CampaignRunner: campaignEngine,
+		LLM:            llmService,
 	})
 	server := &http.Server{
 		Addr:              cfg.Addr,
