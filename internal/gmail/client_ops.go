@@ -86,6 +86,9 @@ func (c *Client) ListMessageIDs(ctx context.Context, query string, limit int) ([
 		for _, message := range response.Messages {
 			if message.Id != "" {
 				ids = append(ids, message.Id)
+				if len(ids) >= limit {
+					break
+				}
 			}
 		}
 		if response.NextPageToken == "" || len(response.Messages) == 0 {

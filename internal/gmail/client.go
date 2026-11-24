@@ -282,6 +282,9 @@ func (p *persistingTokenSource) Token() (*oauth2.Token, error) {
 	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	if token.RefreshToken == "" {
+		token.RefreshToken = p.last.RefreshToken
+	}
 	if token.AccessToken == p.last.AccessToken &&
 		token.RefreshToken == p.last.RefreshToken &&
 		token.Expiry.Equal(p.last.Expiry) {
