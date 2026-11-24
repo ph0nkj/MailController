@@ -415,8 +415,163 @@ export function Mailbox() {
                           This message has no plain-text body. Open it in Gmail to view the formatted content.
                         </p>
                       `}
+                  <${MessageAssistant} message=${detail.message} />
                 `}
         </${Modal}>
+      `}
+    </div>
+  `;
+}
+
+function aiErrorMessage(error) {
+  if (!error) return "";
+  if (error.code === "llm_not_configured") {
+    return "Configure an AI provider in Settings to use the assistant.";
+  }
+  if (error.code === "google_not_connected" || error.code === "google_not_configured") {
+    return "Connect your Google account before using the assistant.";
+  }
+  return error.message || "The AI request failed.";
+}
+
+function MessageAssistant({ message }) {
+  const [summary, setSummary] = useState("");
+  const [summaryBusy, setSummaryBusy] = useState(false);
+  const [summaryError, setSummaryError] = useState("");
+  const [draftOpen, setDraftOpen] = useState(false);
+  const [instructions, setInstructions] = useState("");
+  const [draft, setDraft] = useState(null);
+  const [draftBusy, setDraftBusy] = useState(false);
+  const [draftError, setDraftError] = useState("");
+  const summarySeq = useRef(0);
+  const draftSeq = useRef(0);
+
+  async function summarize() {
+    if (summaryBusy) return;
+    const seq = summarySeq.current + 1;
+    summarySeq.current = seq;
+    setSummaryBusy(true);
+    setSummaryError("");
+    try {
+      const result = await api.summarize([message.id]);
+      if (summarySeq.current !== seq) return;
+      setSummary(result.summary || "");
+    } catch (err) {
+      if (summarySeq.current === seq) setSummaryError(aiErrorMessage(err));
+    } finally {
+      if (summarySeq.current === seq) setSummaryBusy(false);
+    }
+  }
+
+  async function generateDraft() {
+    if (draftBusy) return;
+    const seq = draftSeq.current + 1;
+    draftSeq.current = seq;
+    setDraftBusy(true);
+    setDraftError("");
+    try {
+      const result = await api.draftReply(message.id, instructions.trim());
+      if (draftSeq.current !== seq) return;
+      setDraft(result);
+    } catch (err) {
+      if (draftSeq.current === seq) setDraftError(aiErrorMessage(err));
+    } finally {
+      if (draftSeq.current === seq) setDraftBusy(false);
+    }
+  }
+
+  async function copyDraft() {
+    if (!draft) return;
+    const text = `To: ${draft.to || ""}\nSubject: ${draft.subject || ""}\n\n${draft.body || ""}`;
+    try {
+      await navigator.clipboard.writeText(text);
+      toast("Draft copied", "success");
+    } catch {
+      toast("Could not copy the draft", "error");
+    }
+  }
+
+  return html`
+    <div class="ai-panel">
+      <div class="ai-panel-head">
+        <div>
+          <h4 class="ai-title">AI assistant</h4>
+          <p class="tiny muted">
+            Read-only: summaries and drafts never change or send email.
+            <${Link} href="/settings" class="ai-settings-link">Provider settings</${Link}>
+          </p>
+        </div>
+        <div class="ai-actions">
+          <${Button} variant="secondary" size="sm" onClick=${summarize} disabled=${summaryBusy}>
+            ${summaryBusy ? html`<${Spinner} /> Summarizing…` : "Summarize"}
+          </${Button}>
+          <${Button}
+            variant="secondary"
+            size="sm"
+            onClick=${() => {
+              setDraftOpen((value) => !value);
+              setDraftError("");
+            }}
+          >
+            ${draftOpen ? "Hide draft" : "Draft reply"}
+          </${Button}>
+        </div>
+      </div>
+
+      <${ErrorBox} message=${summaryError} />
+      ${summary &&
+      html`
+        <div class="ai-output">
+          <div class="label">Summary</div>
+          <div class="ai-summary">${summary}</div>
+        </div>
+      `}
+
+      ${draftOpen &&
+      html`
+        <div class="ai-draft">
+          <div class="field">
+            <label class="label" for="ai-instructions">Instructions (optional)</label>
+            <textarea
+              id="ai-instructions"
+              class="textarea ai-instructions"
+              maxlength="2000"
+              placeholder="Keep it short and confirm the meeting time."
+              value=${instructions}
+              onInput=${(event) => setInstructions(event.target.value)}
+              disabled=${draftBusy}
+            ></textarea>
+          </div>
+          <div class="row">
+            <${Button} variant="primary" size="sm" onClick=${generateDraft} disabled=${draftBusy}>
+              ${draftBusy ? html`<${Spinner} /> Drafting…` : "Generate draft"}
+            </${Button}>
+          </div>
+          <${ErrorBox} message=${draftError} />
+          ${draft &&
+          html`
+            <div class="ai-draft-result">
+              <div class="ai-draft-meta">
+                <span class="tiny muted">Draft only — MailController will not send it.</span>
+              </div>
+              <div class="field">
+                <span class="label">To</span>
+                <div class="ai-draft-line mono">${draft.to || "—"}</div>
+              </div>
+              <div class="field">
+                <span class="label">Subject</span>
+                <div class="ai-draft-line">${draft.subject || "—"}</div>
+              </div>
+              <div class="field">
+                <span class="label">Body</span>
+                <pre class="ai-draft-body">${draft.body}</pre>
+              </div>
+              <div class="row">
+                <${Button} variant="secondary" size="sm" onClick=${copyDraft}>Copy draft</${Button}>
+              </div>
+            </div>
+          `}
+        </div>
       `}
     </div>
   `;

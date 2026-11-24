@@ -1339,6 +1339,185 @@ code,
   margin-bottom: 4px;
 }
 
+/* AI assistant */
+.ai-panel {
+  border-top: 1px solid var(--border);
+  margin-top: 18px;
+  padding-top: 16px;
+}
+
+.ai-panel-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.ai-title {
+  margin: 0 0 2px;
+  font-size: 14px;
+}
+
+.ai-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.ai-settings-link {
+  margin-left: 6px;
+  white-space: nowrap;
+}
+
+.ai-output {
+  margin-top: 12px;
+  padding: 12px;
+  background: var(--blue-50);
+  border: 1px solid var(--blue-100);
+  border-radius: 8px;
+}
+
+.ai-output .label {
+  display: block;
+  margin-bottom: 6px;
+}
+
+.ai-summary {
+  font-size: 14px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.ai-draft {
+  margin-top: 12px;
+  padding: 12px;
+  background: #f8fafc;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.ai-draft .textarea,
+.ai-instructions {
+  min-height: 80px;
+}
+
+.ai-draft-result {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--border);
+}
+
+.ai-draft-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.ai-draft-line {
+  padding: 8px 10px;
+  background: var(--white);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+
+.ai-draft-body {
+  margin: 0;
+  padding: 12px;
+  max-height: 280px;
+  overflow: auto;
+  background: var(--white);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-family:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial,
+    sans-serif, "Apple Color Emoji", "Segoe UI Emoji";
+  font-size: 14px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.ai-test-result {
+  margin: 0 0 12px;
+  padding: 9px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+}
+
+.ai-test-result.ok {
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  color: var(--success);
+}
+
+.ai-test-result.error {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  color: var(--danger-dark);
+}
+
+.ai-settings-actions {
+  margin-top: 14px;
+}
+
+.ai-privacy-note {
+  margin-top: 16px;
+  margin-bottom: 0;
+}
+
+.ai-hero {
+  background:
+    linear-gradient(120deg, rgba(37, 99, 235, 0.08), rgba(255, 255, 255, 0) 62%),
+    var(--white);
+}
+
+.ai-capability-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 14px;
+}
+
+.ai-capability {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.ai-capability-icon {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  flex: 0 0 38px;
+  border-radius: 10px;
+  background: var(--blue-50);
+  color: var(--blue-600);
+}
+
+.ai-capability .card-title {
+  margin-bottom: 4px;
+}
+
+.ai-capability .card-sub {
+  margin-bottom: 0;
+}
+
+.ai-guardrails {
+  margin: 0;
+  padding-left: 20px;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.ai-guardrails li {
+  margin-bottom: 6px;
+}
+
 @media (max-width: 900px) {
   .app-shell {
     flex-direction: column;

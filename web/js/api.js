@@ -127,4 +127,16 @@ export const api = {
     }),
   pauseCampaign: (id) =>
     request(`/campaigns/${encodeURIComponent(id)}/pause`, { method: "POST" }),
+
+  llmStatus: () => request("/llm/status"),
+  saveLLMSettings: (data) => request("/llm/settings", { method: "PUT", body: data }),
+  clearLLMSettings: () => request("/llm/settings", { method: "DELETE" }),
+  testLLM: () => request("/llm/test", { method: "POST" }),
+  summarize: (ids) =>
+    request("/assistant/summarize", { method: "POST", body: { message_ids: ids } }),
+  draftReply: (messageId, instructions) =>
+    request("/assistant/draft-reply", {
+      method: "POST",
+      body: { message_id: messageId, instructions },
+    }),
 };
