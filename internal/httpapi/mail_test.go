@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strconv"
+	"sync"
 	"testing"
 	"time"
 
@@ -30,6 +31,17 @@ type fakeMailbox struct {
 	countQueries []string
 	counts       map[string]int64
 	countErr     error
+
+	idsQuery string
+	idsLimit int
+	ids      []string
+	idsErr   error
+
+	batchMu  sync.Mutex
+	batches  [][]string
+	adds     [][]string
+	removes  [][]string
+	batchErr error
 }
 
 func (f *fakeMailbox) ListMessages(_ context.Context, opts gmail.ListOptions) (gmail.ListResult, error) {
@@ -50,6 +62,27 @@ func (f *fakeMailbox) CountMessages(_ context.Context, query string) (int64, err
 		return 0, f.countErr
 	}
 	return f.counts[query], nil
+}
+
+func (f *fakeMailbox) ListMessageIDs(_ context.Context, query string, limit int) ([]string, error) {
+	f.idsQuery = query
+	f.idsLimit = limit
+	return f.ids, f.idsErr
+}
+
+func (f *fakeMailbox) BatchModify(_ context.Context, ids, addLabels, removeLabels []string) error {
+	f.batchMu.Lock()
+	defer f.batchMu.Unlock()
+	f.batches = append(f.batches, append([]string(nil), ids...))
+	f.adds = append(f.adds, append([]string(nil), addLabels...))
+	f.removes = append(f.removes, append([]string(nil), removeLabels...))
+	return f.batchErr
+}
+
+func (f *fakeMailbox) batchCalls() ([][]string, [][]string, [][]string) {
+	f.batchMu.Lock()
+	defer f.batchMu.Unlock()
+	return f.batches, f.adds, f.removes
 }
 
 func newTestAPIWithMailbox(t *testing.T, mailbox MailboxService) (*API, http.Handler) {

@@ -4,8 +4,11 @@ import (
 	"context"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/ph0nkj/mailcontroller/internal/domain"
 )
 
 func openTestStore(t *testing.T) *Store {
@@ -68,4 +71,38 @@ func TestDSNForPath(t *testing.T) {
 	require.True(t, isMemoryPath(":memory:"))
 	require.True(t, isMemoryPath("file::memory:?cache=shared"))
 	require.False(t, isMemoryPath("/tmp/x.db"))
+}
+
+func TestAuditRoundTrip(t *testing.T) {
+	s := openTestStore(t)
+	ctx := context.Background()
+	repo := s.Audit()
+
+	require.Error(t, repo.Add(ctx, domain.AuditEntry{}))
+
+	require.NoError(t, repo.Add(ctx, domain.AuditEntry{Action: "mail.clean.execute"}))
+	require.NoError(t, repo.Add(ctx, domain.AuditEntry{
+		Actor:   "tester",
+		Action:  "mail.clean.finish",
+		Details: `{"affected":10}`,
+		TS:      time.Unix(1000, 0),
+	}))
+
+	entries, err := repo.List(ctx, 10)
+	require.NoError(t, err)
+	require.Len(t, entries, 2)
+	require.Equal(t, "mail.clean.finish", entries[0].Action)
+	require.Equal(t, "tester", entries[0].Actor)
+	require.Equal(t, `{"affected":10}`, entries[0].Details)
+	require.Equal(t, int64(1000), entries[0].TS.Unix())
+	require.NotZero(t, entries[0].ID)
+
+	require.Equal(t, "mail.clean.execute", entries[1].Action)
+	require.Equal(t, "admin", entries[1].Actor)
+	require.Equal(t, "{}", entries[1].Details)
+
+	limited, err := repo.List(ctx, 1)
+	require.NoError(t, err)
+	require.Len(t, limited, 1)
+	require.Equal(t, entries[0].ID, limited[0].ID)
 }

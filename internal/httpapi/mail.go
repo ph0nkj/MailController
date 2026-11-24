@@ -31,6 +31,8 @@ type MailboxService interface {
 	ListMessages(ctx context.Context, opts gmail.ListOptions) (gmail.ListResult, error)
 	GetMessage(ctx context.Context, id string) (domain.Message, error)
 	CountMessages(ctx context.Context, query string) (int64, error)
+	ListMessageIDs(ctx context.Context, query string, limit int) ([]string, error)
+	BatchModify(ctx context.Context, ids, addLabels, removeLabels []string) error
 }
 
 type messageDTO struct {
@@ -226,4 +228,6 @@ func (a *API) mailRoutes(r chi.Router) {
 	r.Get("/mail/messages", a.handleMailList)
 	r.Get("/mail/messages/{id}", a.handleMailGet)
 	r.Get("/mail/stats", a.handleMailStats)
+	r.With(a.requireCSRF).Post("/mail/clean/preview", a.handleCleanPreview)
+	r.With(a.requireCSRF).Post("/mail/clean/execute", a.handleCleanExecute)
 }
