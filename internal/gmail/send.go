@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"mime"
 	"net/mail"
+	"sort"
 	"strings"
 	"time"
 
@@ -27,9 +28,10 @@ const (
 var ErrInvalidMessage = errors.New("gmail: invalid message")
 
 // SendMessage sends a multipart message through the connected account and
-// returns the Gmail message id.
-func (c *Client) SendMessage(ctx context.Context, to, subject, textBody, htmlBody string) (string, error) {
-	raw, err := buildMIMEMessage(c.email, to, subject, textBody, htmlBody, time.Now())
+// returns the Gmail message id. Extra headers are added verbatim after
+// validation; callers must not pass untrusted names or values.
+func (c *Client) SendMessage(ctx context.Context, to, subject, textBody, htmlBody string, headers map[string]string) (string, error) {
+	raw, err := buildMIMEMessage(c.email, to, subject, textBody, htmlBody, headers, time.Now())
 	if err != nil {
 		return "", err
 	}
@@ -39,6 +41,11 @@ func (c *Client) SendMessage(ctx context.Context, to, subject, textBody, htmlBod
 		return "", fmt.Errorf("gmail: send message: %w", err)
 	}
 	return sent.Id, nil
+}
+
+// FromAddress returns the connected mailbox address used in the From header.
+func (c *Client) FromAddress() string {
+	return c.email
 }
 
 // Retryable reports whether an error from SendMessage is likely transient and
@@ -73,7 +80,10 @@ func (c *Client) Retryable(err error) bool {
 	return true
 }
 
-func buildMIMEMessage(from, to, subject, textBody, htmlBody string, now time.Time) ([]byte, error) {
+func buildMIMEMessage(from, to, subject, textBody, htmlBody string, headers map[string]string, now time.Time) ([]byte, error) {
+	if err := validateHeaders(headers); err != nil {
+		return nil, err
+	}
 	if strings.ContainsAny(to, "\r\n") {
 		return nil, fmt.Errorf("%w: recipient contains a line break", ErrInvalidMessage)
 	}
@@ -112,7 +122,14 @@ func buildMIMEMessage(from, to, subject, textBody, htmlBody string, now time.Tim
 	builder.WriteString(mime.QEncoding.Encode("UTF-8", subject))
 	builder.WriteString("\r\nDate: ")
 	builder.WriteString(now.Format(time.RFC1123Z))
-	builder.WriteString("\r\nMIME-Version: 1.0\r\n")
+	builder.WriteString("\r\n")
+	for _, name := range sortedHeaderNames(headers) {
+		builder.WriteString(name)
+		builder.WriteString(": ")
+		builder.WriteString(headers[name])
+		builder.WriteString("\r\n")
+	}
+	builder.WriteString("MIME-Version: 1.0\r\n")
 
 	if strings.TrimSpace(htmlBody) == "" {
 		builder.WriteString("Content-Type: text/plain; charset=\"UTF-8\"\r\n")
@@ -147,6 +164,45 @@ func buildMIMEMessage(from, to, subject, textBody, htmlBody string, now time.Tim
 	builder.WriteString(boundary)
 	builder.WriteString("--\r\n")
 	return []byte(builder.String()), nil
+}
+
+// validateHeaders rejects names that are not valid field names and values
+// containing line breaks, which would otherwise allow header injection.
+func validateHeaders(headers map[string]string) error {
+	for name, value := range headers {
+		if !validHeaderName(name) {
+			return fmt.Errorf("%w: invalid header name %q", ErrInvalidMessage, name)
+		}
+		if strings.ContainsAny(value, "\r\n") {
+			return fmt.Errorf("%w: header %q contains a line break", ErrInvalidMessage, name)
+		}
+	}
+	return nil
+}
+
+func validHeaderName(name string) bool {
+	if name == "" {
+		return false
+	}
+	for i := 0; i < len(name); i++ {
+		c := name[i]
+		switch {
+		case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z', c >= '0' && c <= '9':
+		case strings.ContainsRune("!#$%&'*+-.^_`|~", rune(c)):
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+func sortedHeaderNames(headers map[string]string) []string {
+	names := make([]string, 0, len(headers))
+	for name := range headers {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
 }
 
 func sanitizeHeader(value string) string {

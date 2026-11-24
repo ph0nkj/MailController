@@ -133,6 +133,10 @@ func run() error {
 		logger.Info("recovered interrupted agent runs", "count", recovered)
 	}
 
+	var campaignOptions []mailer.Option
+	if cfg.UnsubscribeEnabled {
+		campaignOptions = append(campaignOptions, mailer.WithUnsubscribe(cfg.UnsubscribeEmail))
+	}
 	campaignEngine, err := mailer.NewEngine(
 		logger,
 		st.Campaigns(),
@@ -145,6 +149,7 @@ func run() error {
 		},
 		runner,
 		st.Audit(),
+		campaignOptions...,
 	)
 	if err != nil {
 		return fmt.Errorf("initialise campaign engine: %w", err)
