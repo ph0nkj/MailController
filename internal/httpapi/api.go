@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
 
 	"github.com/ph0nkj/mailcontroller/internal/auth"
 	"github.com/ph0nkj/mailcontroller/internal/config"
@@ -90,6 +91,7 @@ func (a *API) Router() http.Handler {
 	r.Use(a.requestID)
 	r.Use(a.recoverer)
 	r.Use(a.logger)
+	r.Use(middleware.Compress(5))
 	r.Use(securityHeaders)
 
 	r.Get("/healthz", a.handleHealth)
