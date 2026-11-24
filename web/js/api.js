@@ -26,7 +26,7 @@ export async function request(path, options = {}) {
   let body = options.body;
   if (body !== undefined && body !== null && !(body instanceof FormData)) {
     if (typeof body !== "string") body = JSON.stringify(body);
-    headers["Content-Type"] = "application/json";
+    if (!headers["Content-Type"]) headers["Content-Type"] = "application/json";
   }
   if (csrfToken && !["GET", "HEAD", "OPTIONS"].includes(method)) {
     headers["X-CSRF-Token"] = csrfToken;
@@ -99,4 +99,32 @@ export const api = {
       body: { mode, confirm_token: confirmToken },
     }),
   job: (id) => request(`/jobs/${encodeURIComponent(id)}`),
+
+  campaigns: () => request("/campaigns"),
+  campaign: (id) => request(`/campaigns/${encodeURIComponent(id)}`),
+  createCampaign: (data) => request("/campaigns", { method: "POST", body: data }),
+  updateCampaign: (id, data) =>
+    request(`/campaigns/${encodeURIComponent(id)}`, { method: "PUT", body: data }),
+  deleteCampaign: (id) =>
+    request(`/campaigns/${encodeURIComponent(id)}`, { method: "DELETE" }),
+  campaignRecipients: (id, { status = "", page = 1, pageSize = 50 } = {}) => {
+    const params = new URLSearchParams();
+    if (status) params.set("status", status);
+    params.set("page", String(page));
+    params.set("page_size", String(pageSize));
+    return request(`/campaigns/${encodeURIComponent(id)}/recipients?${params.toString()}`);
+  },
+  importCampaignRecipients: (id, text) =>
+    request(`/campaigns/${encodeURIComponent(id)}/recipients`, {
+      method: "POST",
+      body: text,
+      headers: { "Content-Type": "text/plain; charset=utf-8" },
+    }),
+  startCampaign: (id) =>
+    request(`/campaigns/${encodeURIComponent(id)}/start`, {
+      method: "POST",
+      body: { confirm: true },
+    }),
+  pauseCampaign: (id) =>
+    request(`/campaigns/${encodeURIComponent(id)}/pause`, { method: "POST" }),
 };

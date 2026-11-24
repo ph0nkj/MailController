@@ -17,6 +17,8 @@ import (
 	mcrypto "github.com/ph0nkj/mailcontroller/internal/crypto"
 	"github.com/ph0nkj/mailcontroller/internal/gmail"
 	"github.com/ph0nkj/mailcontroller/internal/httpapi"
+	"github.com/ph0nkj/mailcontroller/internal/jobs"
+	"github.com/ph0nkj/mailcontroller/internal/mailer"
 	"github.com/ph0nkj/mailcontroller/internal/store"
 )
 
@@ -74,11 +76,35 @@ func run() error {
 		return fmt.Errorf("initialise gmail service: %w", err)
 	}
 
+	runner := jobs.NewRunner(50, 30*time.Minute)
+	campaignEngine, err := mailer.NewEngine(
+		logger,
+		st.Campaigns(),
+		func(ctx context.Context) (mailer.Sender, error) {
+			client, clientErr := gmailService.Client(ctx)
+			if clientErr != nil {
+				return nil, clientErr
+			}
+			return client, nil
+		},
+		runner,
+		st.Audit(),
+	)
+	if err != nil {
+		return fmt.Errorf("initialise campaign engine: %w", err)
+	}
+	if _, err := campaignEngine.RecoverRunning(ctx); err != nil {
+		logger.Warn("recover running campaigns", "error", err)
+	}
+
 	api := httpapi.New(logger, cfg, httpapi.Deps{
-		Auth:    authService,
-		Google:  gmailService,
-		Mailbox: gmailService,
-		Audit:   st.Audit(),
+		Auth:           authService,
+		Google:         gmailService,
+		Mailbox:        gmailService,
+		Audit:          st.Audit(),
+		Jobs:           runner,
+		Campaigns:      st.Campaigns(),
+		CampaignRunner: campaignEngine,
 	})
 	server := &http.Server{
 		Addr:              cfg.Addr,

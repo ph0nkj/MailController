@@ -18,6 +18,7 @@ function Stat({ label, value, note, tone }) {
 export function Dashboard() {
   const [status, setStatus] = useState(null);
   const [stats, setStats] = useState(null);
+  const [campaigns, setCampaigns] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [statsError, setStatsError] = useState("");
@@ -25,9 +26,10 @@ export function Dashboard() {
   async function load() {
     setError("");
     setStatsError("");
-    const [statusResult, statsResult] = await Promise.allSettled([
+    const [statusResult, statsResult, campaignsResult] = await Promise.allSettled([
       api.googleStatus(),
       api.mailStats(),
+      api.campaigns(),
     ]);
     if (statusResult.status === "fulfilled") {
       setStatus(statusResult.value);
@@ -40,6 +42,11 @@ export function Dashboard() {
       setStats(null);
       setStatsError(statsResult.reason?.message || "Could not load mailbox statistics");
     }
+    if (campaignsResult.status === "fulfilled") {
+      setCampaigns(campaignsResult.value);
+    } else {
+      setCampaigns(null);
+    }
     setLoading(false);
   }
 
@@ -49,6 +56,15 @@ export function Dashboard() {
 
   const connected = Boolean(status && status.connected);
   const number = (value) => (typeof value === "number" ? value.toLocaleString() : "—");
+  const campaignItems = campaigns && Array.isArray(campaigns.items) ? campaigns.items : [];
+  const sentTotal = campaignItems.reduce(
+    (sum, campaign) => sum + ((campaign.stats && campaign.stats.sent) || 0),
+    0,
+  );
+  const runningCampaigns = campaignItems.filter((campaign) => campaign.status === "running").length;
+  const campaignNote = campaigns
+    ? `${sentTotal.toLocaleString()} emails sent${runningCampaigns ? ` · ${runningCampaigns} running` : ""}`
+    : "Open campaigns to see progress";
 
   return html`
     <div>
@@ -85,7 +101,7 @@ export function Dashboard() {
                   value=${number(stats ? stats.inbox_unread : null)}
                   note=${connected ? "Unread messages in Inbox" : "Connect Google to load"}
                 />
-                <${Stat} label="Campaigns" value="0 sent" tone="small" note="Bulk mailing arrives next" />
+                <${Stat} label="Campaigns" value=${number(campaignItems.length)} tone="small" note=${campaignNote} />
               </div>
 
               ${!connected &&
@@ -110,6 +126,7 @@ export function Dashboard() {
                 <p class="card-sub">Jump straight into the most common tasks.</p>
                 <div class="row">
                   <${Link} href="/mailbox" className="btn btn-secondary">Browse mailbox</${Link}>
+                  <${Link} href="/campaigns" className="btn btn-secondary">Campaigns</${Link}>
                   <${Link} href="/settings" className="btn btn-ghost">Account settings</${Link}>
                 </div>
               </section>
