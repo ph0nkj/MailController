@@ -22,8 +22,8 @@ MailController is a small self-hosted web application for managing one Gmail mai
 Requirements: Docker with Compose v2.
 
 ```bash
-git clone https://github.com/ph0nkj/mailcontroller.git
-cd mailcontroller
+git clone https://github.com/ph0nkj/MailController.git
+cd MailController
 cp .env.example .env
 ```
 
