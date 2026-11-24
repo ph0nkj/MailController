@@ -230,4 +230,5 @@ func (a *API) mailRoutes(r chi.Router) {
 	r.Get("/mail/stats", a.handleMailStats)
 	r.With(a.requireCSRF).Post("/mail/clean/preview", a.handleCleanPreview)
 	r.With(a.requireCSRF).Post("/mail/clean/execute", a.handleCleanExecute)
+	r.With(a.requireCSRF).Post("/mail/bulk", a.handleMailBulk)
 }
