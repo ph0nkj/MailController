@@ -77,4 +77,26 @@ export const api = {
       body: { client_id: clientId, client_secret: clientSecret },
     }),
   disconnectGoogle: () => request("/google/disconnect", { method: "DELETE" }),
+
+  mailList: ({ q = "", label = "", unread = false, pageToken = "", pageSize = 25 }) => {
+    const params = new URLSearchParams();
+    if (q) params.set("q", q);
+    if (label) params.set("label", label);
+    if (unread) params.set("unread", "true");
+    if (pageToken) params.set("page_token", pageToken);
+    params.set("page_size", String(pageSize));
+    return request(`/mail/messages?${params.toString()}`);
+  },
+  mailGet: (id) => request(`/mail/messages/${encodeURIComponent(id)}`),
+  mailStats: () => request("/mail/stats"),
+  mailBulk: (ids, action, confirm = false) =>
+    request("/mail/bulk", { method: "POST", body: { ids, action, confirm } }),
+  cleanPreview: (mode) =>
+    request("/mail/clean/preview", { method: "POST", body: { mode } }),
+  cleanExecute: (mode, confirmToken) =>
+    request("/mail/clean/execute", {
+      method: "POST",
+      body: { mode, confirm_token: confirmToken },
+    }),
+  job: (id) => request(`/jobs/${encodeURIComponent(id)}`),
 };

@@ -75,8 +75,10 @@ func run() error {
 	}
 
 	api := httpapi.New(logger, cfg, httpapi.Deps{
-		Auth:   authService,
-		Google: gmailService,
+		Auth:    authService,
+		Google:  gmailService,
+		Mailbox: gmailService,
+		Audit:   st.Audit(),
 	})
 	server := &http.Server{
 		Addr:              cfg.Addr,
