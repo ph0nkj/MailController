@@ -1,6 +1,8 @@
 package httpapi
 
 import (
+	"compress/gzip"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -38,6 +40,48 @@ func TestStaticWeb(t *testing.T) {
 	handler.ServeHTTP(rec, req)
 	require.Equal(t, http.StatusNotFound, rec.Code)
 	require.Contains(t, rec.Body.String(), "not_found")
+}
+
+func TestStaticCachingAndCompression(t *testing.T) {
+	_, handler := newTestAPI(t)
+
+	req := httptest.NewRequest(http.MethodGet, "/css/theme.css", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusOK, rec.Code)
+	etag := rec.Header().Get("ETag")
+	require.NotEmpty(t, etag)
+	require.Contains(t, rec.Header().Get("Cache-Control"), "max-age=3600")
+	body := rec.Body.String()
+
+	req = httptest.NewRequest(http.MethodGet, "/css/theme.css", nil)
+	req.Header.Set("If-None-Match", etag)
+	rec = httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusNotModified, rec.Code)
+	require.Empty(t, rec.Body.String())
+
+	req = httptest.NewRequest(http.MethodGet, "/css/theme.css", nil)
+	req.Header.Set("Accept-Encoding", "gzip")
+	rec = httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, "gzip", rec.Header().Get("Content-Encoding"))
+	require.Contains(t, rec.Header().Get("Vary"), "Accept-Encoding")
+	require.Equal(t, etag, rec.Header().Get("ETag"))
+	reader, err := gzip.NewReader(rec.Body)
+	require.NoError(t, err)
+	uncompressed, err := io.ReadAll(reader)
+	require.NoError(t, err)
+	require.NoError(t, reader.Close())
+	require.Equal(t, body, string(uncompressed))
+
+	req = httptest.NewRequest(http.MethodGet, "/", nil)
+	req.Header.Set("Accept", "text/html")
+	rec = httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	require.Equal(t, "no-store", rec.Header().Get("Cache-Control"))
+	require.Empty(t, rec.Header().Get("ETag"))
 }
 
 func TestRemoteIP(t *testing.T) {

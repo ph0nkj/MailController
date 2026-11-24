@@ -32,6 +32,8 @@ jobs:
         with:
           version: v1.62.2
           args: --timeout=5m
+      - name: Check frontend bundle size
+        run: make bundle-size
 
   test:
     name: Test

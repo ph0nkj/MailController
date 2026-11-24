@@ -5,7 +5,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"html"
 	"log/slog"
+	"net/mail"
+	"strings"
 	"sync"
 	"time"
 
@@ -52,8 +55,11 @@ type CampaignStore interface {
 
 // Sender delivers one rendered message and returns the provider message id.
 type Sender interface {
-	SendMessage(ctx context.Context, to, subject, textBody, htmlBody string) (string, error)
+	SendMessage(ctx context.Context, to, subject, textBody, htmlBody string, headers map[string]string) (string, error)
 	Retryable(err error) bool
+	// FromAddress returns the connected mailbox address used as the default
+	// unsubscribe contact.
+	FromAddress() string
 }
 
 // SenderFactory returns a sender bound to the connected account. It is called
@@ -75,8 +81,23 @@ type Engine struct {
 	now       func() time.Time
 	sleep     func(ctx context.Context, d time.Duration) error
 
+	unsubscribeEnabled bool
+	unsubscribeEmail   string
+
 	mu     sync.Mutex
 	active map[string]*runHandle
+}
+
+// Option customises campaign delivery.
+type Option func(*Engine)
+
+// WithUnsubscribe enables a List-Unsubscribe header and a matching footer on
+// every campaign message. An empty address uses the connected mailbox.
+func WithUnsubscribe(email string) Option {
+	return func(e *Engine) {
+		e.unsubscribeEnabled = true
+		e.unsubscribeEmail = strings.TrimSpace(email)
+	}
 }
 
 type runHandle struct {
@@ -92,6 +113,7 @@ func NewEngine(
 	newSender SenderFactory,
 	runner *jobs.Runner,
 	audit AuditStore,
+	opts ...Option,
 ) (*Engine, error) {
 	if store == nil {
 		return nil, errors.New("mailer: campaign store is required")
@@ -105,7 +127,7 @@ func NewEngine(
 	if log == nil {
 		log = slog.Default()
 	}
-	return &Engine{
+	engine := &Engine{
 		log:       log,
 		store:     store,
 		newSender: newSender,
@@ -114,7 +136,18 @@ func NewEngine(
 		now:       time.Now,
 		sleep:     sleepContext,
 		active:    make(map[string]*runHandle),
-	}, nil
+	}
+	for _, opt := range opts {
+		if opt != nil {
+			opt(engine)
+		}
+	}
+	if engine.unsubscribeEmail != "" {
+		if err := validatePlainAddress(engine.unsubscribeEmail); err != nil {
+			return nil, fmt.Errorf("mailer: invalid unsubscribe email: %w", err)
+		}
+	}
+	return engine, nil
 }
 
 // Start validates a campaign, marks it running and launches a delivery job. It
@@ -352,15 +385,17 @@ func (e *Engine) interrupted(campaignID string, extra map[string]any) error {
 
 func (e *Engine) sendWithRetries(ctx context.Context, sender Sender, campaign *domain.Campaign, email string) error {
 	subject := Render(campaign.Subject, email)
-	textBody := Render(campaign.BodyText, email)
-	htmlBody := Render(campaign.BodyHTML, email)
+	textBody, htmlBody, headers := e.prepareMessage(sender,
+		Render(campaign.BodyText, email),
+		Render(campaign.BodyHTML, email),
+	)
 
 	var lastErr error
 	for attempt := 1; attempt <= maxSendAttempts; attempt++ {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		_, lastErr = sender.SendMessage(ctx, email, subject, textBody, htmlBody)
+		_, lastErr = sender.SendMessage(ctx, email, subject, textBody, htmlBody, headers)
 		if lastErr == nil {
 			return nil
 		}
@@ -373,6 +408,54 @@ func (e *Engine) sendWithRetries(ctx context.Context, sender Sender, campaign *d
 		}
 	}
 	return lastErr
+}
+
+// htmlOnlyTextBody mirrors the fallback used by the MIME builder when a
+// campaign has HTML content but no text body.
+const htmlOnlyTextBody = "This message contains HTML content. Please use an HTML-capable mail client."
+
+// prepareMessage appends the unsubscribe footer to both bodies and returns the
+// List-Unsubscribe header. The configured address wins; otherwise the
+// connected mailbox is used so unsubscribe works without extra configuration.
+func (e *Engine) prepareMessage(sender Sender, textBody, htmlBody string) (string, string, map[string]string) {
+	if !e.unsubscribeEnabled {
+		return textBody, htmlBody, nil
+	}
+	address := strings.TrimSpace(e.unsubscribeEmail)
+	if address == "" {
+		address = strings.TrimSpace(sender.FromAddress())
+	}
+	if address == "" || validatePlainAddress(address) != nil {
+		return textBody, htmlBody, nil
+	}
+	if strings.TrimSpace(textBody) == "" && strings.TrimSpace(htmlBody) == "" {
+		return textBody, htmlBody, nil
+	}
+	if strings.TrimSpace(textBody) == "" {
+		textBody = htmlOnlyTextBody
+	}
+	textBody += "\n\n---\nTo unsubscribe, reply to this message or email " + address + ".\n"
+	if strings.TrimSpace(htmlBody) != "" {
+		mailto := "mailto:" + address + "?subject=unsubscribe"
+		htmlBody += "\n<hr style=\"border:none;border-top:1px solid #d7e1ef;margin:24px 0\">\n" +
+			"<p style=\"color:#5a6b82;font-size:13px;line-height:1.5\">" +
+			"To unsubscribe, reply to this message or email <a href=\"" +
+			html.EscapeString(mailto) + "\">" + html.EscapeString(address) + "</a>.</p>\n"
+	}
+	return textBody, htmlBody, map[string]string{
+		"List-Unsubscribe": "<mailto:" + address + "?subject=unsubscribe>",
+	}
+}
+
+func validatePlainAddress(value string) error {
+	parsed, err := mail.ParseAddress(value)
+	if err != nil {
+		return err
+	}
+	if parsed.Name != "" || !strings.EqualFold(parsed.Address, value) {
+		return errors.New("address must be a plain mailbox")
+	}
+	return nil
 }
 
 func (e *Engine) pauseRun(campaignID, reason string, extra map[string]any) {

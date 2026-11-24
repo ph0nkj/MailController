@@ -1,10 +1,13 @@
 package httpapi
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"io/fs"
 	"net/http"
 	"path"
 	"strings"
+	"sync"
 
 	"github.com/ph0nkj/mailcontroller/web"
 )
@@ -14,6 +17,10 @@ const contentSecurityPolicy = "default-src 'self'; base-uri 'self'; frame-ancest
 	"connect-src 'self'; font-src 'self'"
 
 var webFiles = http.FileServer(http.FS(webui.FS))
+
+// assetETagCache stores content hashes of embedded assets. The assets are
+// immutable for the lifetime of the process, so each file is hashed once.
+var assetETagCache sync.Map
 
 func (a *API) serveWeb(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet && r.Method != http.MethodHead {
@@ -51,12 +58,52 @@ func (a *API) serveWeb(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *API) serveAsset(w http.ResponseWriter, r *http.Request, name string) {
-	w.Header().Set("Cache-Control", "public, max-age=300, must-revalidate")
+	w.Header().Set("Cache-Control", "public, max-age=3600, must-revalidate")
 	if strings.HasSuffix(name, ".html") {
 		setWebSecurityHeaders(w)
 		w.Header().Set("Cache-Control", "no-store")
+		webFiles.ServeHTTP(w, r)
+		return
+	}
+	if etag := assetETag(name); etag != "" {
+		w.Header().Set("ETag", etag)
+		if etagMatches(r.Header.Get("If-None-Match"), etag) {
+			w.WriteHeader(http.StatusNotModified)
+			return
+		}
 	}
 	webFiles.ServeHTTP(w, r)
+}
+
+// assetETag returns a weak validator for one embedded asset. A weak ETag is
+// used because the response may be served either identity-encoded or gzipped.
+func assetETag(name string) string {
+	if cached, ok := assetETagCache.Load(name); ok {
+		return cached.(string)
+	}
+	data, err := fs.ReadFile(webui.FS, name)
+	if err != nil {
+		return ""
+	}
+	sum := sha256.Sum256(data)
+	tag := `W/"` + hex.EncodeToString(sum[:8]) + `"`
+	assetETagCache.Store(name, tag)
+	return tag
+}
+
+func etagMatches(header, tag string) bool {
+	for _, candidate := range strings.Split(header, ",") {
+		candidate = strings.TrimSpace(candidate)
+		switch {
+		case candidate == "":
+			continue
+		case candidate == "*":
+			return true
+		case strings.TrimPrefix(candidate, "W/") == strings.TrimPrefix(tag, "W/"):
+			return true
+		}
+	}
+	return false
 }
 
 func (a *API) serveIndex(w http.ResponseWriter, r *http.Request) {
