@@ -1,0 +1,95 @@
+name: CI
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+    branches: [main, dev]
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Check formatting
+        run: |
+          unformatted="$(gofmt -l .)"
+          if [ -n "$unformatted" ]; then
+            echo "gofmt required for:"
+            echo "$unformatted"
+            exit 1
+          fi
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: v1.62.2
+          args: --timeout=5m
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Vet
+        run: go vet ./...
+      - name: Test with race detector
+        run: go test -race ./...
+
+  docker:
+    name: Docker image
+    runs-on: ubuntu-latest
+    needs: [lint, test]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          load: true
+          tags: mailcontroller:ci
+          provenance: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Verify image size
+        run: |
+          size="$(docker image inspect mailcontroller:ci --format '{{.Size}}')"
+          limit=$((30 * 1024 * 1024))
+          echo "Image size: ${size} bytes"
+          if [ "$size" -ge "$limit" ]; then
+            echo "Image exceeds the 30 MB target"
+            exit 1
+          fi
+      - name: Smoke test
+        run: |
+          docker run -d --name mc-ci \
+            -e MC_ADDR=:8080 \
+            -e MC_BASE_URL=http://127.0.0.1:8080 \
+            -e MC_SECRET_KEY="$(openssl rand -base64 32)" \
+            -e MC_ADMIN_PASSWORD=test-password \
+            -e MC_UNSUBSCRIBE_ENABLED=false \
+            mailcontroller:ci
+          for attempt in $(seq 1 20); do
+            if docker exec mc-ci /mailcontroller -healthcheck; then
+              exit 0
+            fi
+            sleep 1
+          done
+          docker logs mc-ci
+          exit 1
+      - name: Stop smoke container
+        if: always()
+        run: docker rm -f mc-ci || true
