@@ -32,19 +32,21 @@ type AuthService interface {
 
 // Deps contains external services used by HTTP handlers.
 type Deps struct {
-	Auth AuthService
+	Auth   AuthService
+	Google GoogleService
 }
 
 // API wires HTTP handlers to application services.
 type API struct {
-	log  *slog.Logger
-	cfg  config.Config
-	auth AuthService
+	log    *slog.Logger
+	cfg    config.Config
+	auth   AuthService
+	google GoogleService
 }
 
 // New returns an API with the supplied logger, configuration and dependencies.
 func New(log *slog.Logger, cfg config.Config, deps Deps) *API {
-	return &API{log: log, cfg: cfg, auth: deps.Auth}
+	return &API{log: log, cfg: cfg, auth: deps.Auth, google: deps.Google}
 }
 
 // Router builds the full HTTP handler, including middleware and API routes.
@@ -60,10 +62,12 @@ func (a *API) Router() http.Handler {
 	r.Route("/api/v1", func(r chi.Router) {
 		r.Get("/healthz", a.handleHealth)
 		r.Post("/auth/login", a.handleLogin)
+		r.Get("/google/callback", a.handleGoogleCallback)
 		r.Group(func(r chi.Router) {
 			r.Use(a.authenticate)
 			r.Get("/auth/me", a.handleMe)
 			r.With(a.requireCSRF).Post("/auth/logout", a.handleLogout)
+			a.googleRoutes(r)
 		})
 		r.NotFound(func(w http.ResponseWriter, _ *http.Request) {
 			writeError(w, http.StatusNotFound, "not_found", "resource not found")

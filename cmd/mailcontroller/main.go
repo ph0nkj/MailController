@@ -14,6 +14,8 @@ import (
 
 	"github.com/ph0nkj/mailcontroller/internal/auth"
 	"github.com/ph0nkj/mailcontroller/internal/config"
+	mcrypto "github.com/ph0nkj/mailcontroller/internal/crypto"
+	"github.com/ph0nkj/mailcontroller/internal/gmail"
 	"github.com/ph0nkj/mailcontroller/internal/httpapi"
 	"github.com/ph0nkj/mailcontroller/internal/store"
 )
@@ -52,7 +54,30 @@ func run() error {
 		return fmt.Errorf("initialise auth: %w", err)
 	}
 
-	api := httpapi.New(logger, cfg, httpapi.Deps{Auth: authService})
+	secretCipher, err := mcrypto.New(cfg.SecretKey)
+	if err != nil {
+		return fmt.Errorf("initialise secret cipher: %w", err)
+	}
+
+	gmailService, err := gmail.NewService(
+		st.Settings(),
+		st.GoogleAccount(),
+		secretCipher,
+		logger,
+		gmail.Options{
+			BaseURL:      cfg.BaseURL,
+			ClientID:     cfg.GoogleClientID,
+			ClientSecret: cfg.GoogleClientSecret,
+		},
+	)
+	if err != nil {
+		return fmt.Errorf("initialise gmail service: %w", err)
+	}
+
+	api := httpapi.New(logger, cfg, httpapi.Deps{
+		Auth:   authService,
+		Google: gmailService,
+	})
 	server := &http.Server{
 		Addr:              cfg.Addr,
 		Handler:           api.Router(),

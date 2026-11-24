@@ -55,6 +55,11 @@ type Config struct {
 	UnsubscribeEnabled bool
 	// UnsubscribeEmail is the mailbox used for unsubscribe requests.
 	UnsubscribeEmail string
+	// GoogleClientID is an optional OAuth client ID supplied via environment.
+	GoogleClientID string
+	// GoogleClientSecret is an optional OAuth client secret supplied via
+	// environment.
+	GoogleClientSecret string
 	// LogLevel is the minimum structured log level.
 	LogLevel slog.Level
 	// CookieSecure forces the Secure flag on session cookies.
@@ -71,6 +76,8 @@ func Load() (Config, error) {
 		BaseURL:            strings.TrimRight(env("MC_BASE_URL", DefaultBaseURL), "/"),
 		UnsubscribeEmail:   os.Getenv("MC_UNSUBSCRIBE_EMAIL"),
 		UnsubscribeEnabled: envBool("MC_UNSUBSCRIBE_ENABLED", true),
+		GoogleClientID:     strings.TrimSpace(os.Getenv("GOOGLE_CLIENT_ID")),
+		GoogleClientSecret: strings.TrimSpace(os.Getenv("GOOGLE_CLIENT_SECRET")),
 	}
 
 	var err error

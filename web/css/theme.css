@@ -71,6 +71,16 @@ code,
   font-size: 0.9em;
 }
 
+.code-box {
+  background: #f8fafc;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 9px 11px;
+  font-size: 12px;
+  word-break: break-all;
+  color: #334155;
+}
+
 .boot {
   min-height: 100vh;
   display: grid;
@@ -259,6 +269,14 @@ code,
 .card + .card,
 .stack > .card {
   margin-top: 0;
+}
+
+.card-flat {
+  box-shadow: none;
+}
+
+.mt-4 {
+  margin-top: 16px;
 }
 
 .stack {

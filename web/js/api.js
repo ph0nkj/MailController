@@ -69,4 +69,12 @@ export const api = {
     request("/auth/login", { method: "POST", body: { password } }),
   logout: () => request("/auth/logout", { method: "POST" }),
   me: () => request("/auth/me"),
+
+  googleStatus: () => request("/google/status"),
+  saveGoogleClient: (clientId, clientSecret) =>
+    request("/google/client", {
+      method: "PUT",
+      body: { client_id: clientId, client_secret: clientSecret },
+    }),
+  disconnectGoogle: () => request("/google/disconnect", { method: "DELETE" }),
 };
