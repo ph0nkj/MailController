@@ -123,7 +123,7 @@ export function Pagination({ page, pageSize, total, onPage, onPageSize, pageSize
   `;
 }
 
-export function Modal({ title, children, onClose, footer }) {
+export function Modal({ title, children, onClose, footer, className = "" }) {
   const ref = useRef(null);
   useEffect(() => {
     const onKey = (event) => {
@@ -145,7 +145,7 @@ export function Modal({ title, children, onClose, footer }) {
         if (event.target === event.currentTarget) onClose();
       }}
     >
-      <div class="modal" role="dialog" aria-modal="true" aria-label=${title} tabindex="-1" ref=${ref}>
+      <div class=${`modal ${className}`} role="dialog" aria-modal="true" aria-label=${title} tabindex="-1" ref=${ref}>
         <div class="modal-head">
           <h2 class="modal-title">${title}</h2>
           <button class="icon-btn" type="button" aria-label="Close" onClick=${onClose}>×</button>
