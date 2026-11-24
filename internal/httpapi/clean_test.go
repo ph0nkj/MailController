@@ -50,7 +50,9 @@ func doJSON(t *testing.T, handler http.Handler, cookie *http.Cookie, csrf, metho
 	t.Helper()
 	req := httptest.NewRequest(method, target, strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
-	req.AddCookie(cookie)
+	if cookie != nil {
+		req.AddCookie(cookie)
+	}
 	if csrf != "" {
 		req.Header.Set("X-CSRF-Token", csrf)
 	}

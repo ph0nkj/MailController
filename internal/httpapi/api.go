@@ -33,24 +33,32 @@ type AuthService interface {
 
 // Deps contains external services used by HTTP handlers.
 type Deps struct {
-	Auth    AuthService
-	Google  GoogleService
-	Mailbox MailboxService
-	Audit   AuditStore
-	Jobs    *jobs.Runner
+	Auth           AuthService
+	Google         GoogleService
+	Mailbox        MailboxService
+	Audit          AuditStore
+	Jobs           *jobs.Runner
+	Campaigns      CampaignStore
+	CampaignRunner CampaignRunner
+	LLM            LLMService
+	Agent          AgentService
 }
 
 // API wires HTTP handlers to application services.
 type API struct {
-	log       *slog.Logger
-	cfg       config.Config
-	auth      AuthService
-	google    GoogleService
-	mailbox   MailboxService
-	audit     AuditStore
-	jobs      *jobs.Runner
-	confirms  *confirmStore
-	mailCache *ttlCache[any]
+	log            *slog.Logger
+	cfg            config.Config
+	auth           AuthService
+	google         GoogleService
+	mailbox        MailboxService
+	audit          AuditStore
+	jobs           *jobs.Runner
+	confirms       *confirmStore
+	mailCache      *ttlCache[any]
+	campaigns      CampaignStore
+	campaignRunner CampaignRunner
+	llm            LLMService
+	agent          AgentService
 }
 
 // New returns an API with the supplied logger, configuration and dependencies.
@@ -60,15 +68,19 @@ func New(log *slog.Logger, cfg config.Config, deps Deps) *API {
 		runner = jobs.NewRunner(50, 30*time.Minute)
 	}
 	return &API{
-		log:       log,
-		cfg:       cfg,
-		auth:      deps.Auth,
-		google:    deps.Google,
-		mailbox:   deps.Mailbox,
-		audit:     deps.Audit,
-		jobs:      runner,
-		confirms:  newConfirmStore(confirmTokenTTL),
-		mailCache: newTTLCache[any](mailCacheTTL, mailCacheMaxEntries),
+		log:            log,
+		cfg:            cfg,
+		auth:           deps.Auth,
+		google:         deps.Google,
+		mailbox:        deps.Mailbox,
+		audit:          deps.Audit,
+		jobs:           runner,
+		confirms:       newConfirmStore(confirmTokenTTL),
+		mailCache:      newTTLCache[any](mailCacheTTL, mailCacheMaxEntries),
+		campaigns:      deps.Campaigns,
+		campaignRunner: deps.CampaignRunner,
+		llm:            deps.LLM,
+		agent:          deps.Agent,
 	}
 }
 
@@ -93,6 +105,9 @@ func (a *API) Router() http.Handler {
 			a.googleRoutes(r)
 			a.mailRoutes(r)
 			a.jobRoutes(r)
+			a.campaignRoutes(r)
+			a.llmRoutes(r)
+			a.agentRoutes(r)
 		})
 		r.NotFound(func(w http.ResponseWriter, _ *http.Request) {
 			writeError(w, http.StatusNotFound, "not_found", "resource not found")
