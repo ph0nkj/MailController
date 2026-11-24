@@ -20,13 +20,18 @@ import (
 
 func newTestAPI(t *testing.T) (*API, http.Handler) {
 	t.Helper()
+	return newTestAPIWithGoogle(t, nil)
+}
+
+func newTestAPIWithGoogle(t *testing.T, google GoogleService) (*API, http.Handler) {
+	t.Helper()
 	st, err := store.Open(context.Background(), filepath.Join(t.TempDir(), "api.db"))
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, st.Close()) })
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	authService, err := auth.New(context.Background(), st.Settings(), "test-password", false, logger)
 	require.NoError(t, err)
-	api := New(logger, config.Config{}, Deps{Auth: authService})
+	api := New(logger, config.Config{}, Deps{Auth: authService, Google: google})
 	return api, api.Router()
 }
 
@@ -136,4 +141,14 @@ func TestUnauthenticatedRequests(t *testing.T) {
 		handler.ServeHTTP(rec, req)
 		require.Equal(t, http.StatusUnauthorized, rec.Code, target)
 	}
+}
+
+func loginSession(t *testing.T, handler http.Handler) (*http.Cookie, string) {
+	t.Helper()
+	rec, body := login(t, handler)
+	result := rec.Result()
+	t.Cleanup(func() { require.NoError(t, result.Body.Close()) })
+	cookies := result.Cookies()
+	require.Len(t, cookies, 1)
+	return cookies[0], body.CSRFToken
 }
