@@ -28,6 +28,11 @@ const (
 	DefaultOpenAIBaseURL    = "https://api.openai.com/v1"
 	DefaultAnthropicBaseURL = "https://api.anthropic.com/v1"
 
+	// DefaultOpenAIModel and DefaultAnthropicModel are used when an
+	// administrator supplies only an API key.
+	DefaultOpenAIModel    = "gpt-4o-mini"
+	DefaultAnthropicModel = "claude-sonnet-4-5"
+
 	settingConfig = "llm.config_enc"
 
 	maxBaseURLLength = 2048
@@ -293,7 +298,14 @@ func normalizeSettings(in, existing Settings) (Settings, error) {
 		APIKey:   strings.TrimSpace(in.APIKey),
 	}
 	if cfg.Provider == "" {
-		cfg.Provider = ProviderOpenAI
+		switch {
+		case cfg.APIKey != "":
+			cfg.Provider = inferProvider(cfg.APIKey)
+		case existing.Provider != "":
+			cfg.Provider = existing.Provider
+		default:
+			cfg.Provider = ProviderOpenAI
+		}
 	}
 	if !validProvider(cfg.Provider) {
 		return Settings{}, fmt.Errorf("%w: provider must be %q or %q",
@@ -306,7 +318,13 @@ func normalizeSettings(in, existing Settings) (Settings, error) {
 		return Settings{}, err
 	}
 	if cfg.Model == "" {
-		return Settings{}, fmt.Errorf("%w: model is required", ErrInvalidSettings)
+		// Keep an existing custom model when other fields are edited, but
+		// choose a sensible default for a fresh API-key-only connection.
+		if cfg.Provider == existing.Provider && existing.Model != "" && cfg.APIKey == "" {
+			cfg.Model = existing.Model
+		} else {
+			cfg.Model = defaultModel(cfg.Provider)
+		}
 	}
 	if len(cfg.Model) > maxModelLength || containsControl(cfg.Model) {
 		return Settings{}, fmt.Errorf("%w: model must be at most %d printable characters",
@@ -348,6 +366,21 @@ func defaultBaseURL(provider string) string {
 		return DefaultAnthropicBaseURL
 	}
 	return DefaultOpenAIBaseURL
+}
+
+func defaultModel(provider string) string {
+	if provider == ProviderAnthropic {
+		return DefaultAnthropicModel
+	}
+	return DefaultOpenAIModel
+}
+
+// inferProvider detects the provider from well-known API key prefixes.
+func inferProvider(apiKey string) string {
+	if strings.HasPrefix(strings.TrimSpace(apiKey), "sk-ant-") {
+		return ProviderAnthropic
+	}
+	return ProviderOpenAI
 }
 
 func containsControl(value string) bool {

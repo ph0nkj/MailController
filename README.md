@@ -17,6 +17,16 @@ MailController is a small self-hosted web application for managing one Gmail mai
 - Audit log for security-relevant actions. Logs never contain passwords, API keys, tokens, or message bodies.
 - One static binary, embedded frontend, SQLite storage, and a scratch-based container image.
 
+## Screenshots
+
+| Desktop | Mobile |
+| --- | --- |
+| <img src="test/screenshots/02-dashboard-desktop.png" width="640" alt="Dashboard on desktop"> | <img src="test/screenshots/11-dashboard-mobile.png" width="200" alt="Dashboard on a phone"> |
+| <img src="test/screenshots/09-settings-ai-connected.png" width="640" alt="AI provider connected on desktop"> | <img src="test/screenshots/14-settings-ai-mobile.png" width="200" alt="AI provider on a phone"> |
+
+More states, including the connection error and campaign modal, are in
+[`test/screenshots`](test/screenshots).
+
 ## Quick start Docker
 
 Requirements: Docker with Compose v2.
@@ -60,14 +70,29 @@ MailController requests only the `gmail.modify` and `gmail.send` scopes. It cann
 
 ## LLM setup
 
-The AI assistant and the mailbox agent need an LLM provider. Open **Settings → AI provider**, choose a provider, and enter the model and API key:
+The AI assistant and the mailbox agent need an LLM provider. Open **Settings → AI provider** and paste an API key:
 
-- **OpenAI** — default base URL `https://api.openai.com/v1`. Any OpenAI-compatible chat completions endpoint works by changing the base URL.
-- **Anthropic** — default base URL `https://api.anthropic.com/v1`, using the Messages API.
+- an OpenAI key (`sk-…`) uses `https://api.openai.com/v1` and `gpt-4o-mini`;
+- an Anthropic key (`sk-ant-…`) uses `https://api.anthropic.com/v1` and `claude-sonnet-4-5`.
 
-The API key is encrypted before it is stored in SQLite. Use **Test connection** to verify the settings.
+The provider is detected from the key and a default model is selected automatically. Press **Connect**; MailController performs a minimal request and shows **Connected** or **Not connected**. Use **Advanced settings** only for a custom OpenAI-compatible endpoint or a different model. The API key is encrypted before it is stored in SQLite and never displayed again.
 
 The assistant can summarize selected messages and draft replies; it never sends mail. The agent turns a request into a plan, but every mailbox-changing action requires preview and explicit confirmation. If an OpenAI-compatible server runs on the Docker host, use an address reachable from the container, for example `http://host.docker.internal:11434/v1`.
+
+## Local UI tests
+
+`test/` contains a dependency-free Chrome DevTools Protocol harness, a mock
+OpenAI/Anthropic endpoint, and a Google credential checker. Run the full UI pass
+against an isolated database and local mock:
+
+```bash
+./test/run-ui.sh
+```
+
+It starts the app on `127.0.0.1:18088`, exercises desktop and mobile layouts,
+writes `test/data/ui-results.json`, and refreshes `test/screenshots/`. The
+committed screenshots use a demo OAuth client, never real credentials. See
+[`test/report.md`](test/report.md) for the latest results.
 
 ## Config table
 
@@ -96,7 +121,7 @@ All runtime settings are environment variables. Docker Compose reads `.env`; the
 
 ## Limits & safety
 
-- Measured targets: container image about 27 MB (limit 30 MB), idle RSS about 18 MB (limit 50 MB), and frontend about 39 KB gzipped (limit 100 KB).
+- Measured targets: container image about 27 MB (limit 30 MB), idle RSS about 18 MB (limit 50 MB), and frontend about 64 KB gzipped (limit 100 KB).
 - Sessions last 12 hours. Five failed logins from one IP within 15 minutes trigger a temporary lockout.
 - All state-changing API calls require a CSRF token. Session cookies are HttpOnly and SameSite=Lax.
 - Google credentials, tokens, and the LLM API key are encrypted at rest with AES-256-GCM. The admin password is stored as a bcrypt hash.

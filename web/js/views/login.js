@@ -1,7 +1,7 @@
 import { useState } from "../vendor/hooks.mjs";
 import { html } from "../html.js";
 import { api, setCSRFToken } from "../api.js";
-import { Button, ErrorBox, Icon } from "../components/ui.js";
+import { Button, ErrorBox } from "../components/ui.js";
 
 export function Login({ onLogin }) {
   const [password, setPassword] = useState("");
@@ -28,8 +28,8 @@ export function Login({ onLogin }) {
     <main class="auth-page">
       <div class="auth-card">
         <div class="auth-brand">
-          <span class="brand-mark"><${Icon} name="mailbox" size=${18} /></span>
-          MailController
+          <img class="auth-logo" src="/img/logo.png" alt="" width="64" height="64" />
+          <span>MailController</span>
         </div>
         <h1 class="auth-title">Sign in</h1>
         <p class="auth-sub">Use the administrator password from your environment.</p>

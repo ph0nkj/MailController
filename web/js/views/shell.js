@@ -39,8 +39,8 @@ export function Shell({ onLogout }) {
     <div class="app-shell">
       <aside class="sidebar">
         <${Link} href="/" className="brand">
-          <span class="brand-mark"><${Icon} name="mailbox" size=${18} /></span>
-          MailController
+          <img class="brand-logo" src="/img/logo.png" alt="" width="36" height="36" />
+          <span class="brand-name">MailController</span>
         </${Link}>
         <nav class="nav" aria-label="Main">
           ${routes
@@ -61,7 +61,6 @@ export function Shell({ onLogout }) {
       </aside>
       <div class="main">
         <header class="topbar">
-          <span class="topbar-title">${page ? page.title : "Not found"}</span>
           <div class="topbar-actions">
             <span class="account-chip">Local admin</span>
             <${Button} variant="ghost" size="sm" onClick=${onLogout} title="Sign out">
@@ -70,7 +69,9 @@ export function Shell({ onLogout }) {
           </div>
         </header>
         <main class="content">
-          <${Page} />
+          <div class="view" key=${path}>
+            <${Page} />
+          </div>
         </main>
       </div>
     </div>
