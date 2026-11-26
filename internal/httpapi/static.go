@@ -32,7 +32,7 @@ func (a *API) serveWeb(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.URL.Path == "/favicon.ico" {
-		http.Redirect(w, r, "/favicon.svg", http.StatusMovedPermanently)
+		http.Redirect(w, r, "/img/logo.png", http.StatusMovedPermanently)
 		return
 	}
 

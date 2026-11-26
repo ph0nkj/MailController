@@ -5,5 +5,5 @@ import "embed"
 
 // FS contains the web UI files served by the HTTP layer.
 //
-//go:embed index.html favicon.svg css js
+//go:embed index.html favicon.svg css js img
 var FS embed.FS

@@ -33,7 +33,7 @@ tidy: ## Tidy module dependencies
 	$(GO) mod tidy
 
 bundle-size: ## Check that the gzipped frontend stays under 100 KB
-	@size=$$(find web -type f \( -name '*.html' -o -name '*.css' -o -name '*.js' -o -name '*.mjs' -o -name '*.svg' \) \
+	@size=$$(find web -type f \( -name '*.html' -o -name '*.css' -o -name '*.js' -o -name '*.mjs' -o -name '*.svg' -o -name '*.png' \) \
 		-print0 | sort -z | xargs -0 cat | gzip -9 | wc -c); \
 	echo "Frontend bundle: $$size bytes gzipped (limit $(BUNDLE_LIMIT))"; \
 	if [ "$$size" -ge "$(BUNDLE_LIMIT)" ]; then \

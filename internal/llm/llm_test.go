@@ -218,6 +218,31 @@ func TestStatusDefaultsAndSave(t *testing.T) {
 	require.False(t, status.HasAPIKey)
 }
 
+func TestSaveWithAPIKeyOnly(t *testing.T) {
+	env := newTestEnv(t, Options{})
+	ctx := context.Background()
+
+	status, err := env.service.Save(ctx, Settings{APIKey: "sk-openai-test"})
+	require.NoError(t, err)
+	require.True(t, status.Configured)
+	require.Equal(t, ProviderOpenAI, status.Provider)
+	require.Equal(t, DefaultOpenAIBaseURL, status.BaseURL)
+	require.Equal(t, DefaultOpenAIModel, status.Model)
+
+	status, err = env.service.Save(ctx, Settings{APIKey: "sk-ant-api03-test"})
+	require.NoError(t, err)
+	require.Equal(t, ProviderAnthropic, status.Provider)
+	require.Equal(t, DefaultAnthropicBaseURL, status.BaseURL)
+	require.Equal(t, DefaultAnthropicModel, status.Model)
+
+	// An update with only a custom endpoint keeps the inferred provider/key.
+	status, err = env.service.Save(ctx, Settings{BaseURL: "https://gateway.example.com/v1"})
+	require.NoError(t, err)
+	require.Equal(t, ProviderAnthropic, status.Provider)
+	require.Equal(t, DefaultAnthropicModel, status.Model)
+	require.Equal(t, "https://gateway.example.com/v1", status.BaseURL)
+}
+
 func TestSaveValidation(t *testing.T) {
 	env := newTestEnv(t, Options{})
 	ctx := context.Background()
@@ -228,7 +253,6 @@ func TestSaveValidation(t *testing.T) {
 		mutate func(*Settings)
 	}{
 		{"unknown provider", func(s *Settings) { s.Provider = "gemini" }},
-		{"missing model", func(s *Settings) { s.Model = "" }},
 		{"control in model", func(s *Settings) { s.Model = "bad\nmodel" }},
 		{"long model", func(s *Settings) { s.Model = strings.Repeat("m", maxModelLength+1) }},
 		{"relative url", func(s *Settings) { s.BaseURL = "/v1" }},

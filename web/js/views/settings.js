@@ -215,24 +215,31 @@ const AI_PROVIDERS = {
   openai: {
     label: "OpenAI compatible",
     base_url: "https://api.openai.com/v1",
-    model_placeholder: "gpt-4o-mini",
+    default_model: "gpt-4o-mini",
   },
   anthropic: {
     label: "Anthropic",
     base_url: "https://api.anthropic.com/v1",
-    model_placeholder: "claude-3-5-sonnet-latest",
+    default_model: "claude-sonnet-4-5",
   },
 };
+
+function detectProvider(apiKey, fallback) {
+  const value = apiKey.trim();
+  if (value.startsWith("sk-ant-")) return "anthropic";
+  if (value.startsWith("sk-")) return "openai";
+  return fallback || "openai";
+}
 
 function AIProviderCard() {
   const [status, setStatus] = useState(null);
   const [loadError, setLoadError] = useState("");
   const [provider, setProvider] = useState("openai");
-  const [baseURL, setBaseURL] = useState(AI_PROVIDERS.openai.base_url);
+  const [baseURL, setBaseURL] = useState("");
   const [model, setModel] = useState("");
   const [apiKey, setAPIKey] = useState("");
   const [formError, setFormError] = useState("");
-  const [testResult, setTestResult] = useState(null);
+  const [connection, setConnection] = useState({ state: "idle", message: "" });
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
   const [removing, setRemoving] = useState(false);
@@ -242,7 +249,7 @@ function AIProviderCard() {
     let active = true;
     api
       .llmStatus()
-      .then((next) => {
+      .then(async (next) => {
         if (!active) return;
         const nextProvider = AI_PROVIDERS[next.provider] ? next.provider : "openai";
         setStatus(next);
@@ -250,6 +257,20 @@ function AIProviderCard() {
         setBaseURL(next.base_url || AI_PROVIDERS[nextProvider].base_url);
         setModel(next.model || "");
         setAPIKey("");
+        if (!next.configured) return;
+        setConnection({ state: "checking", message: "" });
+        try {
+          const tested = await api.testLLM();
+          if (!active) return;
+          setStatus(tested);
+          setConnection({ state: "ok", message: "Provider responded successfully." });
+        } catch (err) {
+          if (!active) return;
+          setConnection({
+            state: "error",
+            message: err.message || "The provider did not respond.",
+          });
+        }
       })
       .catch((err) => {
         if (active) setLoadError(err.message || "Could not load AI provider status");
@@ -260,42 +281,91 @@ function AIProviderCard() {
   }, []);
 
   const meta = AI_PROVIDERS[provider] || AI_PROVIDERS.openai;
+  const connectionState = connection.state;
+  const connectionLabel =
+    connectionState === "ok"
+      ? "Connected"
+      : connectionState === "error"
+        ? "Not connected"
+        : connectionState === "checking"
+          ? "Checking…"
+          : status && status.configured
+            ? "Not checked"
+            : "Not configured";
+  const connectionBadge =
+    connectionState === "ok"
+      ? "badge-green"
+      : connectionState === "error"
+        ? "badge-red"
+        : connectionState === "checking"
+          ? "badge-blue"
+          : status && status.configured
+            ? "badge-amber"
+            : "badge-gray";
 
   function changeProvider(event) {
     const next = event.target.value;
-    const previousDefault = AI_PROVIDERS[provider]?.base_url;
+    const nextMeta = AI_PROVIDERS[next];
+    const previousMeta = AI_PROVIDERS[provider];
     setProvider(next);
-    if (!baseURL.trim() || baseURL.trim() === previousDefault) {
-      setBaseURL(AI_PROVIDERS[next].base_url);
-    }
+    setBaseURL((current) =>
+      !current.trim() || current.trim() === previousMeta.base_url ? nextMeta.base_url : current,
+    );
+    setModel((current) =>
+      !current.trim() || current.trim() === previousMeta.default_model
+        ? nextMeta.default_model
+        : current,
+    );
     setFormError("");
-    setTestResult(null);
+    setConnection({ state: "idle", message: "" });
   }
 
   async function saveProvider(event) {
     event.preventDefault();
     if (saving) return;
     setFormError("");
-    setTestResult(null);
-    if (!model.trim()) {
-      setFormError("A model name is required.");
+    const key = apiKey.trim();
+    if (!key && !(status && status.has_api_key)) {
+      setFormError("Paste an API key to connect a provider.");
       return;
     }
-    if (!apiKey.trim() && !(status && status.has_api_key)) {
-      setFormError("An API key is required the first time you configure a provider.");
-      return;
+    const nextProvider = key ? detectProvider(key, provider) : provider;
+    const previousMeta = AI_PROVIDERS[provider] || AI_PROVIDERS.openai;
+    const nextMeta = AI_PROVIDERS[nextProvider];
+    let nextBaseURL = baseURL.trim();
+    let nextModel = model.trim();
+    if (!nextBaseURL || (nextProvider !== provider && nextBaseURL === previousMeta.base_url)) {
+      nextBaseURL = nextMeta.base_url;
+    }
+    if (!nextModel || (nextProvider !== provider && nextModel === previousMeta.default_model)) {
+      nextModel = nextMeta.default_model;
     }
     setSaving(true);
     try {
       const next = await api.saveLLMSettings({
-        provider,
-        base_url: baseURL.trim(),
-        model: model.trim(),
-        api_key: apiKey.trim(),
+        provider: nextProvider,
+        base_url: nextBaseURL,
+        model: nextModel,
+        api_key: key,
       });
       setStatus(next);
+      setProvider(nextProvider);
+      setBaseURL(nextBaseURL);
+      setModel(nextModel);
       setAPIKey("");
-      toast("AI provider saved", "success");
+      setConnection({ state: "checking", message: "" });
+      try {
+        const tested = await api.testLLM();
+        setStatus(tested);
+        setConnection({ state: "ok", message: "Provider responded successfully." });
+        toast("AI provider connected", "success");
+      } catch (err) {
+        setConnection({
+          state: "error",
+          message: err.message || "The provider did not respond.",
+        });
+        toast("Saved, but the connection test failed", "error");
+      }
     } catch (err) {
       setFormError(err.message || "Could not save AI provider settings");
     } finally {
@@ -307,14 +377,18 @@ function AIProviderCard() {
     if (testing) return;
     setTesting(true);
     setFormError("");
-    setTestResult(null);
+    setConnection({ state: "checking", message: "" });
     try {
       const next = await api.testLLM();
       setStatus(next);
-      setTestResult({ ok: true, message: "The provider responded successfully." });
-      toast("AI provider responded", "success");
+      setConnection({ state: "ok", message: "Provider responded successfully." });
+      toast("AI provider connected", "success");
     } catch (err) {
-      setTestResult({ ok: false, message: err.message || "The provider did not respond" });
+      setConnection({
+        state: "error",
+        message: err.message || "The provider did not respond.",
+      });
+      toast("AI provider connection failed", "error");
     } finally {
       setTesting(false);
     }
@@ -337,7 +411,7 @@ function AIProviderCard() {
       setBaseURL(AI_PROVIDERS.openai.base_url);
       setModel("");
       setAPIKey("");
-      setTestResult(null);
+      setConnection({ state: "idle", message: "" });
       setConfirmRemove(false);
       toast("AI provider removed", "success");
     } catch (err) {
@@ -352,13 +426,13 @@ function AIProviderCard() {
       <div class="row-between">
         <div>
           <h2 class="card-title">AI provider</h2>
-          <p class="card-sub">Summarize mail and draft replies with an OpenAI-compatible endpoint or Anthropic.</p>
+          <p class="card-sub">
+            Paste one API key. MailController detects the provider and checks the connection.
+          </p>
         </div>
         ${status &&
         html`
-          <span class=${`badge ${status.configured ? "badge-green" : "badge-gray"}`}>
-            ${status.configured ? "Configured" : "Not configured"}
-          </span>
+          <span class=${`badge ${connectionBadge}`}>${connectionLabel}</span>
         `}
       </div>
 
@@ -367,82 +441,61 @@ function AIProviderCard() {
         ? html`<${LoadingRow} label="Loading AI provider status…" />`
         : html`
             <form onSubmit=${saveProvider} class="mt-4">
-              <div class="form-grid">
-                <div class="field">
-                  <label class="label" for="ai-provider">Provider</label>
-                  <select
-                    id="ai-provider"
-                    class="select"
-                    value=${provider}
-                    onChange=${changeProvider}
-                    disabled=${saving}
-                  >
-                    ${Object.entries(AI_PROVIDERS).map(
-                      ([value, info]) => html`<option value=${value}>${info.label}</option>`,
-                    )}
-                  </select>
-                </div>
-                <div class="field">
-                  <label class="label" for="ai-model">Model</label>
-                  <input
-                    id="ai-model"
-                    class="input"
-                    value=${model}
-                    onInput=${(event) => setModel(event.target.value)}
-                    placeholder=${meta.model_placeholder}
-                    autocomplete="off"
-                    disabled=${saving}
-                  />
-                </div>
-                <div class="field">
-                  <label class="label" for="ai-base-url">Base URL</label>
-                  <input
-                    id="ai-base-url"
-                    class="input mono"
-                    value=${baseURL}
-                    onInput=${(event) => setBaseURL(event.target.value)}
-                    placeholder=${meta.base_url}
-                    autocomplete="off"
-                    spellcheck="false"
-                    disabled=${saving}
-                  />
-                  <p class="hint">Use the API root, for example ${meta.base_url}.</p>
-                </div>
-                <div class="field">
-                  <label class="label" for="ai-api-key">API key</label>
-                  <input
-                    id="ai-api-key"
-                    class="input"
-                    type="password"
-                    value=${apiKey}
-                    onInput=${(event) => setAPIKey(event.target.value)}
-                    placeholder=${status.has_api_key ? "Saved — enter a new key to replace" : "sk-…"}
-                    autocomplete="new-password"
-                    disabled=${saving}
-                  />
-                  <p class="hint">Encrypted at rest with AES-256-GCM and never displayed again.</p>
-                </div>
+              <div class="field">
+                <label class="label" for="ai-api-key">API key</label>
+                <input
+                  id="ai-api-key"
+                  class="input"
+                  type="password"
+                  value=${apiKey}
+                  onInput=${(event) => {
+                    setAPIKey(event.target.value);
+                    setFormError("");
+                    if (connection.state !== "idle") {
+                      setConnection({ state: "idle", message: "" });
+                    }
+                  }}
+                  placeholder=${status.has_api_key ? "Saved — paste a new key to replace" : "sk-… or sk-ant-…"}
+                  autocomplete="new-password"
+                  spellcheck="false"
+                  disabled=${saving}
+                />
+                <p class="hint">
+                  Paste an OpenAI or Anthropic key. The provider and model are chosen automatically.
+                  The key is encrypted at rest and never displayed again.
+                </p>
               </div>
 
-              <${ErrorBox} message=${formError} />
-              ${testResult &&
+              ${connection.state === "error" &&
               html`
-                <p class=${`ai-test-result ${testResult.ok ? "ok" : "error"}`} role="status">
-                  ${testResult.message}
+                <p class="ai-test-result error" role="status">
+                  ${connection.message || "The provider did not respond."}
+                </p>
+              `}
+              ${connection.state === "ok" &&
+              html`
+                <p class="ai-test-result ok" role="status">
+                  Connected${status && status.model ? ` · ${status.model}` : ""}.
                 </p>
               `}
 
+              <${ErrorBox} message=${formError} />
+
               <div class="row ai-settings-actions">
                 <${Button} type="submit" variant="primary" disabled=${saving}>
-                  ${saving ? html`<${Spinner} /> Saving…` : "Save provider"}
+                  ${saving
+                    ? html`<${Spinner} /> Saving…`
+                    : status && status.configured
+                      ? "Save & test"
+                      : "Connect"}
                 </${Button}>
                 <${Button}
                   variant="secondary"
                   onClick=${testProvider}
-                  disabled=${testing || saving || !status.configured}
-                  title=${status.configured ? "Send a minimal request" : "Save the provider first"}
+                  disabled=${testing || saving || !(status && status.configured)}
+                  title=${status && status.configured ? "Send a minimal request" : "Connect an API key first"}
                 >
-                  ${testing ? html`<${Spinner} /> Testing…` : "Test connection"}
+                  ${testing ? html`<${Spinner} /> Checking…` : "Check connection"}
                 </${Button}>
                 ${(status.configured || status.has_api_key) &&
                 html`
@@ -455,6 +508,56 @@ function AIProviderCard() {
                   </${Button}>
                 `}
               </div>
+
+              <details class="ai-advanced">
+                <summary>Advanced settings</summary>
+                <p class="hint">
+                  Optional. Set a provider, model or custom endpoint only when the defaults do not fit.
+                </p>
+                <div class="form-grid">
+                  <div class="field">
+                    <label class="label" for="ai-provider">Provider</label>
+                    <select
+                      id="ai-provider"
+                      class="select"
+                      value=${provider}
+                      onChange=${changeProvider}
+                      disabled=${saving}
+                    >
+                      ${Object.entries(AI_PROVIDERS).map(
+                        ([value, info]) => html`<option value=${value}>${info.label}</option>`,
+                      )}
+                    </select>
+                  </div>
+                  <div class="field">
+                    <label class="label" for="ai-model">Model</label>
+                    <input
+                      id="ai-model"
+                      class="input"
+                      value=${model}
+                      onInput=${(event) => setModel(event.target.value)}
+                      placeholder=${meta.default_model}
+                      autocomplete="off"
+                      spellcheck="false"
+                      disabled=${saving}
+                    />
+                  </div>
+                  <div class="field">
+                    <label class="label" for="ai-base-url">Base URL</label>
+                    <input
+                      id="ai-base-url"
+                      class="input mono"
+                      value=${baseURL}
+                      onInput=${(event) => setBaseURL(event.target.value)}
+                      placeholder=${meta.base_url}
+                      autocomplete="off"
+                      spellcheck="false"
+                      disabled=${saving}
+                    />
+                    <p class="hint">Use the API root, for example ${meta.base_url}.</p>
+                  </div>
+                </div>
+              </details>
             </form>
           `}
 
