@@ -1,4 +1,4 @@
-import { useEffect } from "../vendor/hooks.mjs";
+import { useEffect, useState } from "../vendor/hooks.mjs";
 import { html } from "../html.js";
 import { Link, useLocation } from "../router.js";
 import { Button, Icon } from "../components/ui.js";
@@ -28,8 +28,15 @@ function NotFound() {
 
 export function Shell({ onLogout }) {
   const path = useLocation();
+  const [navKey, setNavKey] = useState(0);
   const page = routes.find((route) => route.path === path);
   const Page = page ? page.component : NotFound;
+
+  useEffect(() => {
+    const onNavigate = () => setNavKey((value) => value + 1);
+    window.addEventListener("mc:navigate", onNavigate);
+    return () => window.removeEventListener("mc:navigate", onNavigate);
+  }, []);
 
   useEffect(() => {
     document.title = `${page ? page.title : "Not found"} · MailController`;
@@ -69,7 +76,7 @@ export function Shell({ onLogout }) {
           </div>
         </header>
         <main class="content">
-          <div class="view" key=${path}>
+          <div class="view" key=${`${path}:${navKey}`}>
             <${Page} />
           </div>
         </main>

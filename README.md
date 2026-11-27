@@ -121,7 +121,7 @@ All runtime settings are environment variables. Docker Compose reads `.env`; the
 
 ## Limits & safety
 
-- Measured targets: container image about 27 MB (limit 30 MB), idle RSS about 18 MB (limit 50 MB), and frontend about 64 KB gzipped (limit 100 KB).
+- Measured targets: container image about 27 MB (limit 30 MB), idle RSS about 18 MB (limit 50 MB), and frontend about 72 KB gzipped (limit 100 KB).
 - Sessions last 12 hours. Five failed logins from one IP within 15 minutes trigger a temporary lockout.
 - All state-changing API calls require a CSRF token. Session cookies are HttpOnly and SameSite=Lax.
 - Google credentials, tokens, and the LLM API key are encrypted at rest with AES-256-GCM. The admin password is stored as a bcrypt hash.

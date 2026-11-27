@@ -149,7 +149,7 @@ export function Campaigns() {
       `;
     }
     return html`
-      <div class="table-wrap">
+      <div class="table-wrap campaign-table-wrap">
         <table class="table campaign-table">
           <thead>
             <tr>
@@ -166,17 +166,17 @@ export function Campaigns() {
               const total = campaign.stats ? campaign.stats.total : 0;
               return html`
                 <tr key=${campaign.id} class="campaign-row" onClick=${() => openCampaign(campaign.id)}>
-                  <td>
+                  <td class="campaign-cell-main">
                     <div class="campaign-name">${campaign.name}</div>
                     <div class="campaign-subject truncate">${campaign.subject || "(no subject)"}</div>
                   </td>
-                  <td><${StatusBadge} status=${campaign.status} /></td>
-                  <td class="nowrap">${total.toLocaleString()}</td>
-                  <td class="campaign-progress-col">
+                  <td class="campaign-cell-status"><${StatusBadge} status=${campaign.status} /></td>
+                  <td class="campaign-cell-recipients nowrap">${total.toLocaleString()}</td>
+                  <td class="campaign-progress-col campaign-cell-progress">
                     <${ProgressBar} value=${processed} max=${total} />
                     <span class="tiny muted">${processed.toLocaleString()} of ${total.toLocaleString()} processed</span>
                   </td>
-                  <td class="nowrap muted small">${formatDate(campaign.created_at)}</td>
+                  <td class="campaign-cell-created nowrap muted small">${formatDate(campaign.created_at)}</td>
                 </tr>
               `;
             })}
@@ -415,7 +415,7 @@ function CampaignDetail({ id, onBack, onChanged }) {
   if (loading && !detail) {
     return html`
       <div>
-        <div class="page-head">
+        <div class="page-head campaign-detail-page-head">
           <div>
             <button class="link-button campaign-back" type="button" onClick=${onBack}>← Campaigns</button>
             <h1 class="page-title">Campaign</h1>
@@ -429,7 +429,7 @@ function CampaignDetail({ id, onBack, onChanged }) {
   if (loadError && !detail) {
     return html`
       <div>
-        <div class="page-head">
+        <div class="page-head campaign-detail-page-head">
           <div>
             <button class="link-button campaign-back" type="button" onClick=${onBack}>← Campaigns</button>
             <h1 class="page-title">Campaign</h1>
@@ -479,8 +479,8 @@ function CampaignDetail({ id, onBack, onChanged }) {
       `;
     }
     return html`
-      <div class="table-wrap">
-        <table class="table">
+      <div class="table-wrap recipients-table-wrap">
+        <table class="table recipients-table">
           <thead>
             <tr>
               <th>Email</th>
@@ -494,9 +494,9 @@ function CampaignDetail({ id, onBack, onChanged }) {
               (recipient) => html`
                 <tr key=${recipient.id}>
                   <td class="recipient-email">${recipient.email}</td>
-                  <td><${RecipientBadge} status=${recipient.status} /></td>
+                  <td class="recipient-status"><${RecipientBadge} status=${recipient.status} /></td>
                   <td class="recipient-error small muted">${recipient.error || "—"}</td>
-                  <td class="nowrap muted small">${formatDate(recipient.sent_at)}</td>
+                  <td class="recipient-sent nowrap muted small">${formatDate(recipient.sent_at)}</td>
                 </tr>
               `,
             )}
@@ -516,7 +516,7 @@ function CampaignDetail({ id, onBack, onChanged }) {
 
   return html`
     <div>
-      <div class="page-head">
+      <div class="page-head campaign-detail-page-head">
         <div class="campaign-detail-heading">
           <button class="link-button campaign-back" type="button" onClick=${onBack}>← Campaigns</button>
           <h1 class="page-title">${detail.name}</h1>
