@@ -348,6 +348,31 @@ async function main() {
       };
     })()`);
     check("sidebar logo loads", chrome.logo?.complete && chrome.logo.width === 256, JSON.stringify(chrome.logo));
+    const logoFrame = await page.evaluate(`(async () => {
+      const image = document.querySelector('.brand-logo');
+      await image.decode();
+      const canvas = document.createElement('canvas');
+      canvas.width = image.naturalWidth;
+      canvas.height = image.naturalHeight;
+      const context = canvas.getContext('2d');
+      context.drawImage(image, 0, 0);
+      const sample = (x, y) => [...context.getImageData(x, y, 1, 1).data].slice(0, 3);
+      const width = canvas.width;
+      const height = canvas.height;
+      return {
+        size: [width, height],
+        corners: [sample(3, 3), sample(width - 4, 3), sample(3, height - 4), sample(width - 4, height - 4)],
+        edges: [sample(width / 2, 3), sample(width / 2, height - 4), sample(3, height / 2), sample(width - 4, height / 2)],
+      };
+    })()`);
+    const logoBlue = ([red, green, blue]) => red < 20 && green > 70 && green < 120 && blue > 220;
+    check(
+      "logo artwork keeps padding inside its frame",
+      logoFrame.size[0] === 256 &&
+        logoFrame.size[1] === 256 &&
+        [...logoFrame.corners, ...logoFrame.edges].every(logoBlue),
+      JSON.stringify(logoFrame),
+    );
     check("no duplicate top bar page title", chrome.topbarTitle === false, chrome.topbarText);
     check("all five navigation links are present", chrome.navLinks === 5, String(chrome.navLinks));
     check("page heading is shown once", chrome.h1 === "Dashboard" && chrome.activeNav === "Dashboard");
@@ -384,9 +409,32 @@ async function main() {
         body: JSON.stringify(payload),
       });
       const text = await response.text();
-      return { ok: response.ok, status: response.status, body: text.slice(0, 300) };
+      let id = "";
+      try {
+        id = JSON.parse(text).id || "";
+      } catch {
+        id = "";
+      }
+      return { ok: response.ok, status: response.status, body: text.slice(0, 300), id };
     })()`);
-    check("create campaign through API", created.ok, `${created.status} ${created.body}`);
+    check("create campaign through API", created.ok && Boolean(created.id), `${created.status} ${created.body}`);
+
+    const imported = await page.evaluate(`(async () => {
+      const me = await (await fetch('/api/v1/auth/me', { credentials: 'same-origin' })).json();
+      const recipients = [
+        'alexandra.with.a.long.name@example-subdomain.example.com',
+        'recipient.' + 'a'.repeat(40) + '@example-subdomain.example.com',
+        'recipient.' + 'b'.repeat(40) + '@example-subdomain.example.com',
+      ];
+      const response = await fetch('/api/v1/campaigns/${created.id}/recipients', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'text/plain; charset=utf-8', 'X-CSRF-Token': me.csrf_token },
+        body: recipients.join('\\n'),
+      });
+      return { ok: response.ok, status: response.status, body: (await response.text()).slice(0, 200) };
+    })()`);
+    check("import campaign recipients through API", imported.ok && imported.body.includes('"imported":3'), `${imported.status} ${imported.body}`);
 
     await page.navigate(`${BASE}/campaigns`);
     await waitForTitle(page, "Campaigns");
@@ -409,14 +457,76 @@ async function main() {
       campaignNameMetrics && campaignNameMetrics.nameWidth <= campaignNameMetrics.cellWidth + 1,
       JSON.stringify(campaignNameMetrics),
     );
+    const desktopCampaignTable = await page.evaluate(`(() => {
+      const wrap = document.querySelector('.campaign-table-wrap');
+      return {
+        clientWidth: wrap.clientWidth,
+        scrollWidth: wrap.scrollWidth,
+        headerDisplay: getComputedStyle(document.querySelector('.campaign-table thead')).display,
+      };
+    })()`);
+    check(
+      "campaign table fits without clipping on desktop",
+      desktopCampaignTable.scrollWidth <= desktopCampaignTable.clientWidth + 1 &&
+        desktopCampaignTable.headerDisplay !== "none",
+      JSON.stringify(desktopCampaignTable),
+    );
 
     await page.evaluate("document.querySelector('.campaign-row').click()");
     await page.waitFor("document.querySelector('.campaign-body')", "campaign detail");
+    await page.waitFor("document.querySelectorAll('.recipients-table tbody tr').length === 3", "campaign recipients");
     await checkLayout(page, "campaign detail desktop");
+    const detailActions = await page.evaluate(`(() => {
+      const heading = document.querySelector('.campaign-detail-heading').getBoundingClientRect();
+      const actions = document.querySelector('.campaign-detail-page-head .page-actions');
+      const actionBox = actions.getBoundingClientRect();
+      const centers = [...actions.children].map((item) => {
+        const rect = item.getBoundingClientRect();
+        return Math.round(rect.top + rect.height / 2);
+      });
+      return {
+        heading: { right: Math.round(heading.right), bottom: Math.round(heading.bottom) },
+        actions: { left: Math.round(actionBox.left), top: Math.round(actionBox.top) },
+        centers,
+      };
+    })()`);
+    check(
+      "campaign detail actions stay on one row on desktop",
+      detailActions.centers.length > 1 &&
+        Math.max(...detailActions.centers) - Math.min(...detailActions.centers) <= 1,
+      JSON.stringify(detailActions.centers),
+    );
+    check(
+      "campaign detail heading and actions do not overlap",
+      detailActions.heading.right <= detailActions.actions.left + 1 ||
+        detailActions.heading.bottom <= detailActions.actions.top + 1,
+      JSON.stringify(detailActions),
+    );
+    const desktopRecipients = await page.evaluate(`(() => {
+      const wrap = document.querySelector('.recipients-table-wrap');
+      const table = document.querySelector('.recipients-table');
+      return {
+        clientWidth: wrap.clientWidth,
+        scrollWidth: wrap.scrollWidth,
+        headerDisplay: getComputedStyle(table.querySelector('thead')).display,
+        rows: table.querySelectorAll('tbody tr').length,
+      };
+    })()`);
+    check(
+      "recipient list fits without clipping on desktop",
+      desktopRecipients.rows === 3 &&
+        desktopRecipients.scrollWidth <= desktopRecipients.clientWidth + 1 &&
+        desktopRecipients.headerDisplay !== "none",
+      JSON.stringify(desktopRecipients),
+    );
     await page.screenshot("04-campaign-detail-desktop.png");
 
     await openRoute(page, "/mailbox", "Mailbox");
     await checkLayout(page, "mailbox desktop");
+    const mailboxCopy = await page.evaluate(
+      "document.querySelector('.empty')?.textContent.replace(/\\s+/g, ' ').trim() || ''",
+    );
+    check("mailbox connect hint has word spacing", mailboxCopy.includes("in Settings"), mailboxCopy);
     await page.screenshot("05-mailbox-desktop.png");
 
     await openRoute(page, "/assistant", "Assistant");
@@ -537,8 +647,78 @@ async function main() {
     const statusAnthropic = await page.evaluate(`(async () => (await fetch('/api/v1/llm/status', { credentials: 'same-origin' })).json())()`);
     check("status reports Anthropic", statusAnthropic.provider === "anthropic" && statusAnthropic.model === "claude-sonnet-4-5", JSON.stringify(statusAnthropic));
 
-    // Responsive checks at a phone viewport.
+    // Tablet widths must not clip the wide campaign table.
     await page.waitFor("document.querySelectorAll('.toast').length === 0", "toasts to clear", 8000);
+    await page.setViewport({ width: 1024, height: 900 });
+    await openRoute(page, "/campaigns", "Campaigns");
+    await page.waitFor("document.querySelector('.campaign-row')", "campaign row on tablet");
+    const tabletCampaigns = await page.evaluate(`(() => {
+      const wrap = document.querySelector('.campaign-table-wrap');
+      const row = document.querySelector('.campaign-row');
+      const box = row.getBoundingClientRect();
+      const within = [...row.querySelectorAll('td')].every((cell) => {
+        const rect = cell.getBoundingClientRect();
+        return rect.left >= box.left - 1 && rect.right <= box.right + 1;
+      });
+      return {
+        clientWidth: wrap.clientWidth,
+        scrollWidth: wrap.scrollWidth,
+        headerDisplay: getComputedStyle(document.querySelector('.campaign-table thead')).display,
+        rowDisplay: getComputedStyle(row).display,
+        cellsInsideRow: within,
+      };
+    })()`);
+    check(
+      "campaign table becomes cards before clipping on tablet",
+      tabletCampaigns.scrollWidth <= tabletCampaigns.clientWidth + 1 &&
+        tabletCampaigns.headerDisplay === "none" &&
+        tabletCampaigns.rowDisplay === "grid" &&
+        tabletCampaigns.cellsInsideRow,
+      JSON.stringify(tabletCampaigns),
+    );
+    await page.evaluate("document.querySelector('.campaign-row').click()");
+    await page.waitFor("document.querySelector('.campaign-body')", "campaign detail on tablet");
+    await page.waitFor("document.querySelectorAll('.recipients-table tbody tr').length === 3", "recipients on tablet");
+    const tabletDetail = await page.evaluate(`(() => {
+      const heading = document.querySelector('.campaign-detail-heading').getBoundingClientRect();
+      const actions = document.querySelector('.campaign-detail-page-head .page-actions').getBoundingClientRect();
+      return {
+        headingBottom: Math.round(heading.bottom),
+        actionsTop: Math.round(actions.top),
+        actionsLeft: Math.round(actions.left),
+        viewport: document.documentElement.clientWidth,
+      };
+    })()`);
+    check(
+      "campaign detail actions stack below the heading on tablet",
+      tabletDetail.actionsTop >= tabletDetail.headingBottom - 1 && tabletDetail.actionsLeft >= 0,
+      JSON.stringify(tabletDetail),
+    );
+    const tabletRecipients = await page.evaluate(`(() => {
+      const wrap = document.querySelector('.recipients-table-wrap');
+      const row = document.querySelector('.recipients-table tbody tr');
+      const box = row.getBoundingClientRect();
+      return {
+        clientWidth: wrap.clientWidth,
+        scrollWidth: wrap.scrollWidth,
+        headerDisplay: getComputedStyle(document.querySelector('.recipients-table thead')).display,
+        rowDisplay: getComputedStyle(row).display,
+        cellsInsideRow: [...row.querySelectorAll('td')].every((cell) => {
+          const rect = cell.getBoundingClientRect();
+          return rect.left >= box.left - 1 && rect.right <= box.right + 1;
+        }),
+      };
+    })()`);
+    check(
+      "recipient list becomes cards on tablet",
+      tabletRecipients.scrollWidth <= tabletRecipients.clientWidth + 1 &&
+        tabletRecipients.headerDisplay === "none" &&
+        tabletRecipients.rowDisplay === "grid" &&
+        tabletRecipients.cellsInsideRow,
+      JSON.stringify(tabletRecipients),
+    );
+
+    // Responsive checks at a phone viewport.
     await page.setViewport(MOBILE);
     await openRoute(page, "/", "Dashboard");
     await waitForTitle(page, "Dashboard");
@@ -570,8 +750,65 @@ async function main() {
     await openRoute(page, "/campaigns", "Campaigns");
     await page.waitFor("document.querySelector('.campaign-row')", "campaign row");
     await checkLayout(page, "campaigns mobile");
+    const mobileCampaigns = await page.evaluate(`(() => {
+      const wrap = document.querySelector('.campaign-table-wrap');
+      const row = document.querySelector('.campaign-row');
+      const box = row.getBoundingClientRect();
+      const cells = [...row.querySelectorAll('td')].map((cell) => {
+        const rect = cell.getBoundingClientRect();
+        return {
+          left: Math.round(rect.left),
+          right: Math.round(rect.right),
+          inside: rect.left >= box.left - 1 && rect.right <= box.right + 1,
+        };
+      });
+      return {
+        clientWidth: wrap.clientWidth,
+        scrollWidth: wrap.scrollWidth,
+        headerDisplay: getComputedStyle(document.querySelector('.campaign-table thead')).display,
+        cells,
+      };
+    })()`);
+    check(
+      "campaign list is a card layout on mobile",
+      mobileCampaigns.scrollWidth <= mobileCampaigns.clientWidth + 1 &&
+        mobileCampaigns.headerDisplay === "none" &&
+        mobileCampaigns.cells.every((cell) => cell.inside),
+      JSON.stringify(mobileCampaigns),
+    );
     await page.screenshot("12-campaigns-mobile.png");
 
+    await page.evaluate("document.querySelector('.campaign-row').click()");
+    await page.waitFor("document.querySelector('.campaign-body')", "campaign detail on mobile");
+    await page.waitFor("document.querySelectorAll('.recipients-table tbody tr').length === 3", "recipients on mobile");
+    const mobileRecipients = await page.evaluate(`(() => {
+      const wrap = document.querySelector('.recipients-table-wrap');
+      const row = document.querySelector('.recipients-table tbody tr');
+      const box = row.getBoundingClientRect();
+      return {
+        clientWidth: wrap.clientWidth,
+        scrollWidth: wrap.scrollWidth,
+        headerDisplay: getComputedStyle(document.querySelector('.recipients-table thead')).display,
+        rowDisplay: getComputedStyle(row).display,
+        cellsInsideRow: [...row.querySelectorAll('td')].every((cell) => {
+          const rect = cell.getBoundingClientRect();
+          return rect.left >= box.left - 1 && rect.right <= box.right + 1;
+        }),
+      };
+    })()`);
+    check(
+      "recipient list becomes cards on mobile",
+      mobileRecipients.scrollWidth <= mobileRecipients.clientWidth + 1 &&
+        mobileRecipients.headerDisplay === "none" &&
+        mobileRecipients.rowDisplay === "grid" &&
+        mobileRecipients.cellsInsideRow,
+      JSON.stringify(mobileRecipients),
+    );
+    await page.evaluate("document.querySelector('.recipients-table').scrollIntoView({ block: 'start' })");
+    await page.screenshot("15-campaign-detail-mobile.png");
+
+    await openRoute(page, "/campaigns", "Campaigns");
+    await page.waitFor("document.querySelector('.campaign-row')", "campaign row after detail");
     await page.evaluate(`(() => {
       const button = [...document.querySelectorAll('.page-actions button')].find((item) => item.textContent.trim() === 'New campaign');
       if (!button) return false;

@@ -125,10 +125,10 @@ function PlanTable({ plan }) {
           ${plan.steps.map(
             (step, index) => html`
               <tr key=${index}>
-                <td><${ActionBadge} action=${step.action} /></td>
-                <td><span class="mono agent-query">${step.query}</span></td>
-                <td class="agent-count">${Number(step.count || 0).toLocaleString()}</td>
-                <td class="agent-reason">${step.reason || "—"}</td>
+                <td data-label="Action"><${ActionBadge} action=${step.action} /></td>
+                <td data-label="Gmail query"><span class="mono agent-query">${step.query}</span></td>
+                <td class="agent-count" data-label="Matches">${Number(step.count || 0).toLocaleString()}</td>
+                <td class="agent-reason" data-label="Reason">${step.reason || "—"}</td>
               </tr>
             `,
           )}

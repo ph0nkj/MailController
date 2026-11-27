@@ -188,7 +188,7 @@ export function Mailbox() {
       if (isConnectError(error)) {
         return html`
           <${EmptyState} icon="mailbox" title="Google account not connected">
-            Connect your Gmail account in
+            Connect your Gmail account in${" "}
             <${Link} href="/settings">Settings</${Link}> to browse the mailbox.
           </${EmptyState}>
         `;
@@ -211,7 +211,7 @@ export function Mailbox() {
       `;
     }
     return html`
-      <table class="table">
+      <table class="table mail-table">
         <thead>
           <tr>
             <th class="check-col">
@@ -335,7 +335,7 @@ export function Mailbox() {
         </div>
       `}
 
-      <div class="table-wrap">${renderRows()}</div>
+      <div class=${`table-wrap mail-table-wrap ${items.length > 0 ? "has-rows" : ""}`}>${renderRows()}</div>
 
       <div class="pagination">
         <span>

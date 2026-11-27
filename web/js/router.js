@@ -2,9 +2,11 @@ import { useState, useEffect } from "./vendor/hooks.mjs";
 import { html } from "./html.js";
 
 export function navigate(path) {
-  if (window.location.pathname === path) return;
-  window.history.pushState({}, "", path);
-  window.dispatchEvent(new PopStateEvent("popstate"));
+  if (window.location.pathname !== path) {
+    window.history.pushState({}, "", path);
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  }
+  window.dispatchEvent(new Event("mc:navigate"));
 }
 
 export function useLocation() {
