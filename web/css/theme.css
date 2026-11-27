@@ -137,8 +137,8 @@ code,
 .brand-logo {
   width: 36px;
   height: 36px;
-  border-radius: 10px;
-  object-fit: cover;
+  border-radius: 9px;
+  object-fit: contain;
   flex: 0 0 auto;
   box-shadow: 0 6px 16px -6px rgba(37, 99, 235, 0.55);
 }
@@ -291,6 +291,7 @@ code,
   display: flex;
   align-items: center;
   gap: 10px;
+  flex: 0 0 auto;
   flex-wrap: wrap;
 }
 
@@ -414,6 +415,7 @@ code,
   font-weight: 600;
   line-height: 1.2;
   cursor: pointer;
+  max-width: 100%;
   transition:
     background 0.16s var(--ease),
     border-color 0.16s var(--ease),
@@ -933,6 +935,7 @@ code,
   display: flex;
   align-items: center;
   gap: 8px;
+  flex-wrap: wrap;
 }
 
 .pagination select {
@@ -1008,8 +1011,8 @@ code,
 .auth-logo {
   width: 64px;
   height: 64px;
-  border-radius: 16px;
-  object-fit: cover;
+  border-radius: 14px;
+  object-fit: contain;
   box-shadow: 0 10px 24px -10px rgba(37, 99, 235, 0.6);
 }
 
@@ -1206,6 +1209,20 @@ code,
   cursor: pointer;
 }
 
+.mail-table {
+  table-layout: fixed;
+}
+
+.mail-table th:nth-child(2),
+.mail-table td:nth-child(2) {
+  width: 28%;
+}
+
+.mail-table th:nth-child(4),
+.mail-table td:nth-child(4) {
+  width: 200px;
+}
+
 .check-col {
   width: 42px;
   text-align: center;
@@ -1345,6 +1362,21 @@ code,
 .campaign-back {
   margin-bottom: 2px;
   font-size: 13px;
+}
+
+.campaign-detail-page-head .page-actions {
+  justify-content: flex-end;
+}
+
+@media (max-width: 1100px) {
+  .campaign-detail-page-head {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .campaign-detail-page-head .page-actions {
+    justify-content: flex-start;
+  }
 }
 
 .campaign-detail-heading .page-title {
@@ -2064,6 +2096,236 @@ code,
 
   .nav-link {
     padding: 8px 6px;
+  }
+}
+
+/* Wide tables become readable cards before they start to clip or scroll. */
+@media (max-width: 1100px) {
+  .campaign-table-wrap,
+  .recipients-table-wrap,
+  .mail-table-wrap.has-rows,
+  .agent-plan-table {
+    overflow: visible;
+    background: transparent;
+    border: 0;
+    box-shadow: none;
+  }
+
+  .campaign-table,
+  .campaign-table tbody,
+  .recipients-table,
+  .recipients-table tbody,
+  .mail-table,
+  .mail-table tbody,
+  .agent-plan-table .table,
+  .agent-plan-table tbody {
+    display: block;
+    width: 100%;
+  }
+
+  .campaign-table thead,
+  .recipients-table thead,
+  .mail-table thead,
+  .agent-plan-table thead {
+    display: none;
+  }
+
+  .campaign-table tbody,
+  .recipients-table tbody,
+  .mail-table tbody,
+  .agent-plan-table tbody {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .campaign-table tr,
+  .recipients-table tr,
+  .mail-table tr,
+  .agent-plan-table tr {
+    background: var(--white);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+  }
+
+  .campaign-table tbody tr:hover td,
+  .recipients-table tbody tr:hover td,
+  .mail-table tbody tr:hover td,
+  .agent-plan-table tbody tr:hover td {
+    background: transparent;
+  }
+
+  .campaign-table tr {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 8px 12px;
+    padding: 14px;
+  }
+
+  .campaign-table td,
+  .recipients-table td,
+  .mail-table td,
+  .agent-plan-table td {
+    display: block;
+    border: 0;
+    padding: 0;
+    min-width: 0;
+  }
+
+  .campaign-cell-main {
+    grid-column: 1 / -1;
+  }
+
+  .campaign-cell-status {
+    grid-column: 1;
+  }
+
+  .campaign-cell-recipients {
+    grid-column: 2;
+    text-align: right;
+  }
+
+  .campaign-cell-recipients::before {
+    content: "Recipients ";
+    color: var(--muted);
+    font-weight: 500;
+  }
+
+  .campaign-cell-progress {
+    grid-column: 1 / -1;
+    min-width: 0;
+  }
+
+  .campaign-cell-created {
+    grid-column: 1 / -1;
+  }
+
+  .campaign-cell-created::before {
+    content: "Created ";
+    color: var(--muted);
+  }
+
+  .campaign-table .campaign-subject {
+    max-width: none;
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
+  }
+
+  .recipients-table tr {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 6px 12px;
+    padding: 12px 14px;
+  }
+
+  .recipient-email {
+    grid-column: 1 / -1;
+    font-weight: 600;
+  }
+
+  .recipient-status {
+    grid-column: 1;
+    grid-row: 2;
+  }
+
+  .recipient-sent {
+    grid-column: 2;
+    grid-row: 2;
+    text-align: right;
+  }
+
+  .recipient-sent::before {
+    content: "Sent ";
+    color: var(--muted);
+  }
+
+  .recipient-error {
+    grid-column: 1 / -1;
+    grid-row: 3;
+  }
+
+  .mail-table th:nth-child(2),
+  .mail-table td:nth-child(2),
+  .mail-table th:nth-child(4),
+  .mail-table td:nth-child(4) {
+    width: auto;
+  }
+
+  .mail-table tr {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    gap: 4px 10px;
+    padding: 12px 14px;
+  }
+
+  .mail-table .check-col {
+    grid-column: 1;
+    grid-row: 1 / span 2;
+    width: auto;
+  }
+
+  .mail-table td:nth-child(2) {
+    grid-column: 2;
+  }
+
+  .mail-table td:nth-child(3) {
+    grid-column: 2 / -1;
+  }
+
+  .mail-table td:nth-child(4) {
+    grid-column: 3;
+    text-align: right;
+  }
+
+  .mail-table .message-from,
+  .mail-table .message-subject {
+    max-width: none;
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
+  }
+
+  .mail-table .message-from {
+    display: -webkit-box;
+    overflow: hidden;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+  }
+
+  .mail-table .snippet {
+    display: -webkit-box;
+    max-width: none;
+    overflow: hidden;
+    white-space: normal;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+  }
+
+  .agent-plan-table tr {
+    padding: 12px 14px;
+  }
+
+  .agent-plan-table td + td {
+    margin-top: 6px;
+  }
+
+  .agent-plan-table td[data-label]::before {
+    content: attr(data-label) ": ";
+    color: var(--muted);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+
+  .agent-plan-table .agent-count {
+    text-align: left;
+  }
+
+  .agent-plan-table .agent-reason {
+    min-width: 0;
   }
 }
 
